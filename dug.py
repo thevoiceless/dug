@@ -8,6 +8,23 @@ DEBUG = True
 PORT = 53
 
 
+# No bin() in 2.4
+# Convert unsigned int n to binary representation that is numBits long
+# Most credit goes to http://stackoverflow.com/a/1519418/1693087
+def d2b(n, numBits):
+	bStr = ''
+	if n < 0:
+		raise ValueError, "must be a positive integer"
+	if n > (2**numBits - 1):
+		raise ValueError, "not enough bits to represent " + str(n)
+	if n == 0:
+		return '0' * numBits
+	while n > 0:
+		bStr = str(n % 2) + bStr
+		n = n >> 1
+	return bStr.zfill(numBits)
+
+
 # Build the DNS datagram
 # Uses the struct module to convert values to their byte representation
 def buildPacket(hostname):
@@ -102,7 +119,10 @@ def parseResponse(response):
 	(identifier,), response = struct.unpack("!H", response[:2]), response[2:]
 	# Parse flags
 	(flags,), response = struct.unpack("!H", response[:2]), response[2:]
-
+	flags = d2b(flags, 16)
+	qr, opcode, aa, tc, rd, ra, z, rc = flags[0], flags[1:5], flags[5], flags[6], flags[7], flags[8], flags[9:12], flags[12:]
+	print qr, opcode, aa, tc, rd, ra, z, rc
+	
 
 def main():
 	# Parse command-line arguments
