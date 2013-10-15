@@ -1,10 +1,11 @@
 #! /usr/bin/env python
 
-# The machine this was designed to run on only has Python 2.4.3, so optparse is used instead of argparse
-import optparse, random, struct
+# The machine this was designed to run on only has Python 2.4.3, hence the use of older modules
+import optparse, random, struct, socket
 
 
 DEBUG = True
+PORT = 53
 
 
 # Build the DNS datagram
@@ -82,6 +83,18 @@ def buildPacket(hostname):
 		print "%-8s %s" % ("Bytes:", repr(header + questionSegment))
 		print "%-8s %s" % ("Hex:", ''.join([ "%02x " % ord(x) for x in header + questionSegment ]).strip())
 
+	return header + questionSegment
+
+
+def sendPacket(nameserver, packet):
+	print "Creating socket"
+	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	print "Sending packet"
+	sock.sendto(packet, (nameserver, PORT))
+	print "Receiving response"
+	data, addr = sock.recvfrom(1024)
+	print "Received:", repr(data)
+	return data
 
 
 def main():
@@ -100,8 +113,10 @@ def main():
 	nameserver = args[1]
 
 	# Build the packet
-	buildPacket(hostname)
-
+	packet = buildPacket(hostname)
+	# Send the packet
+	response = sendPacket(nameserver, packet)
+	
 
 # __name__ will be '__main__' if this code is being run directly (i.e. 'python dug.py')
 # If so, execute normally. Otherwise, this code is being imported into another module
