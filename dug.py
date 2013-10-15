@@ -97,6 +97,13 @@ def sendPacket(nameserver, packet):
 	return data
 
 
+def parseResponse(response):
+	# Parse identifier
+	(identifier,), response = struct.unpack("!H", response[:2]), response[2:]
+	# Parse flags
+	(flags,), response = struct.unpack("!H", response[:2]), response[2:]
+
+
 def main():
 	# Parse command-line arguments
 	parser = optparse.OptionParser(description = 'Basic dig implementation using Python',
@@ -116,7 +123,9 @@ def main():
 	packet = buildPacket(hostname)
 	# Send the packet
 	response = sendPacket(nameserver, packet)
-	
+	# Parse the response
+	parseResponse(response)
+
 
 # __name__ will be '__main__' if this code is being run directly (i.e. 'python dug.py')
 # If so, execute normally. Otherwise, this code is being imported into another module
