@@ -1,62 +1,86 @@
 #! /usr/bin/env python
 
 # The machine this was designed to run on only has Python 2.4.3, so optparse is used instead of argparse
-import optparse, random, sys
+import optparse, random, struct
 
 
-# Convert unsigned int n to binary representation that is numBits long
-# Most credit goes to http://stackoverflow.com/a/1519418/1693087
-def d2b(n, numBits):
-	bStr = ''
-	if n < 0:
-		raise ValueError, "must be a positive integer"
-	if n > (2**numBits - 1):
-		raise ValueError, "not enough bits to represent " + str(n)
-	if n == 0:
-		return '0' * numBits
-
-	while n > 0:
-		bStr = str(n % 2) + bStr
-		n = n >> 1
-
-	return ((numBits - len(bStr)) * '0') + bStr
+DEBUG = True
 
 
+# Build the DNS datagram
+# Uses the struct module to convert values to their byte representation
 def buildPacket(hostname):
+	# Build the header
 	header = ''
+
 	# 16-bit identifier for the query (0 to 65535)
-	header += d2b(random.randint(0, 65535), 16)
+	identifier = random.randint(0, 65535)
+
+	# The "!H" identifier indicates an unsigned short (2 bytes, 16 bits) formatted for network (big-endian)
+	header += struct.pack("!H", identifier)
+
 	# One bit specifying that this is a query (0)
-	header += d2b(0, 1)
+	qr = '0'
 	# Four-bit opcode specifying this is a standard query (0000)
-	header += d2b(0, 4)
+	opcode = '0000'
 	# One bit for responses that give an authoritative answer (doesn't apply here)
-	header += d2b(0, 1)
+	aa = '0'
 	# One bit indicating whether or not the message was truncated (it won't be)
-	header += d2b(0, 1)
+	tc = '0'
 	# One bit indicating if recursion is desired (no recursion desired)
-	header += d2b(0, 1)
+	rd = '0'
 	# One bit used in responses to indicate that recursion is available (doesn't apply here)
-	header += d2b(0, 1)
+	ra = '0'
 	# 3 bits reserved for future use, must be zero in all queries and responses
-	header += d2b(0, 3)
+	z = '000'
 	# 4-bit response code (doesn't matter here)
-	header += d2b(0, 4)
+	rc = '0000'
+	# Combine the flags
+	header += struct.pack("!H", int(qr + opcode + aa + tc + rd + ra + z + rc, 2))
+
 	# Unsigned 16-bit integer specifying the number of questions (1)
-	header += d2b(1, 16)
+	qdcount = 1
+	header += struct.pack("!H", qdcount)
+
 	# Unsigned 16-bit integer specifying the number of resource records (doesn't apply here)
-	header += d2b(0, 16)
+	ancount = 0
+	header += struct.pack("!H", ancount)
+
 	# Unsigned 16-bit integer specifying the number of name server records (doesn't apply here)
-	header += d2b(0, 16)
+	nscount = 0
+	header += struct.pack("!H", nscount)
+
 	# Unsigned 16-bit integer specifying the number of additional records (doesn't apply here)
-	header += d2b(0, 16)
+	arcount = 0
+	header += struct.pack("!H", arcount)
 
-	for index, bit in enumerate(header):
-		if index % 16 == 0:
-			sys.stdout.write('\n')
-		else:
-			sys.stdout.write(bit)
+	# Build the question segment
+	questionSegment = ''
 
+	# A sequence of labels, where each label consists of a length byte followed by that number of bytes
+	for piece in hostname.split('.'):
+		# No part of the domain name may exceed the max value for a byte (255)
+		if len(piece) > 255:
+			raise ValueError, "part of the domain name exceeds the maximum allowed length (255)"
+		# Length byte, "!B" identifier indicates network-formatted (big-endian) unsigned char (1 byte)
+		questionSegment += struct.pack("!B", len(piece))
+		# The bytes themselves
+		for char in piece:
+			questionSegment += struct.pack("!B", ord(char))
+	# End of the hostname
+	questionSegment += struct.pack("!B", 0)
+
+	# Two-byte field specifying query type (A = 1)
+	qtype = 1
+	questionSegment += struct.pack("!H", qtype)
+
+	# Two-byte field specifying query class (IN = 1)
+	qclass = 1
+	questionSegment += struct.pack("!H", qclass)
+
+	if DEBUG:
+		print "%-8s %s" % ("Bytes:", repr(header + questionSegment))
+		print "%-8s %s" % ("Hex:", ''.join([ "%02x " % ord(x) for x in header + questionSegment ]).strip())
 
 
 
@@ -68,8 +92,9 @@ def main():
 	(options, args) = parser.parse_args()
 	if len(args) != 2:
 		parser.error("Wrong number of arguments")
-	print options
-	print args
+	if DEBUG:
+		print "%-8s %s" % ("Options:", options)
+		print "%-8s %s" % ("Args:", args)
 
 	hostname = args[0]
 	nameserver = args[1]
