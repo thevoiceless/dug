@@ -30,6 +30,17 @@ def d2b(n, numBits = 0):
 	return bStr.zfill(numBits)
 
 
+# Parse the labels from byteString and add the result to returnText
+def parseLabels(returnText, byteString):
+	while True:
+		qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
+		if qlen == 0:
+			break
+		returnText += '.' + byteString[:qlen] if len(returnText) > 0 else byteString[:qlen]
+		byteString = byteString[qlen:]
+	return returnText, byteString
+
+
 # Build the DNS datagram
 # Uses the struct module to convert values to their byte representation
 def buildPacket(hostname):
@@ -117,7 +128,7 @@ def sendPacket(nameserver, packet):
 	print "Received:", repr(data)
 	return data
 
-
+# TODO: Handle errors
 def parseResponse(response):
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
@@ -141,10 +152,10 @@ def parseResponse(response):
 
 	if DEBUG:
 		print "ID:", identifier
-		print "Truncated:", 'yes' if int(tc) else 'no'
-		print "Authoritative:", 'yes' if int(aa) else 'no'
-		print "Return code:", int(rc, 2), "- ERROR" if int(rc, 2) != 0 else ''
+		print "Return code:", int(rc, 2), "(ERROR)" if int(rc, 2) != 0 else "(SUCCESS)"
+		print "Truncated:", 'Yes' if int(tc) else 'No'
 		print "Answers:", ancount
+		print "Authoritative:", 'Yes' if int(aa) else 'No'
 
 	# Parse the questions, same as when building the packet
 	questions = ''
@@ -155,13 +166,7 @@ def parseResponse(response):
 			questions += '\n'
 
 		# Name
-		# TODO: Refactor into its own function for reuse
-		while True:
-			qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
-			if qlen == 0:
-				break
-			questions += '.' + response[:qlen] if len(questions) > 0 else response[:qlen]
-			response = response[qlen:]
+		questions, response = parseLabels(questions, response)
 
 		# Type
 		qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
@@ -181,12 +186,12 @@ def parseResponse(response):
 		print "Questions:", questions
 
 	# Parse answer
-	answer = ''
+	answers = ''
 	# Loop ancount times
 	for a in range(ancount):
 		# List each answer on its own line
-		if len(answer) > 0:
-			answer += '\n'
+		if len(answers) > 0:
+			answers += '\n'
 
 		# Name, variable length
 		checkName = d2b(struct.unpack("!H", response[:2])[0])
@@ -197,38 +202,25 @@ def parseResponse(response):
 			response = response[2:]
 			offset = int(checkName[2:], 2)
 
-			if DEBUG:
-				print "First two bits of name are set, points to offset", offset
-
 			# The question section has been consumed, so refer to the original response string 
 			offsetResponse = origResponse[offset:]
-			while True:
-				qlen, offsetResponse = struct.unpack("!B", offsetResponse[:1])[0], offsetResponse[1:]
-				if qlen == 0:
-					break
-				label += '.' + offsetResponse[:qlen] if len(label) > 0 else offsetResponse[:qlen]
-				offsetResponse = offsetResponse[qlen:]
+			label, _ = parseLabels(label, offsetResponse)
 		# Otherwise, name is a label
 		else:
 			if DEBUG:
 				print "Name is a label"
 
-			while True:
-				qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
-				if qlen == 0:
-					break
-				label += '.' + response[:qlen] if len(label) > 0 else response[:qlen]
-				response = response[qlen:]
+			label, response = parseLabels(label, response)
 
-		answer += label
+		answers += label
 				
 		if DEBUG:
-			print "Label at that offset:", label
+			print "First two bits of name are set, pointer to offset", offset, "=", label
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		if rtype == TYPE['A']:
-			answer += ', Type A'
+			answers += ', Type A'
 		elif rtype == TYPE['NS']:
 			pass
 		elif rtype == TYPE['CNAME']:
@@ -237,11 +229,11 @@ def parseResponse(response):
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		if rclass == CLASS_IN:
-			answer += ', Class IN'
+			answers += ', Class IN'
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
-		answer += ', TTL ' + str(ttl)
+		answers += ', TTL ' + str(ttl)
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
@@ -251,13 +243,13 @@ def parseResponse(response):
 			# A-type records return an IP address as a 32-bit unsigned value
 			try:
 				ip = socket.inet_ntoa(response)
-				answer += ', IP ' + ip
+				answers += ', IP ' + ip
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
 		elif rtype == TYPE['NS']:
 			pass
 
-	print "Answer:", answer
+	print "Answers:", answers
 
 
 def main():
