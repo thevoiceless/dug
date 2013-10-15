@@ -36,7 +36,7 @@ def buildPacket(hostname):
 	# Build the header
 	header = ''
 
-	# 16-bit identifier for the query (0 to 65535)
+	# 16-bit value identifying the query (0 to 65535)
 	identifier = random.randrange(65535)
 
 	# The "!H" identifier indicates an unsigned short (2 bytes, 16 bits) formatted for network (big-endian)
@@ -61,19 +61,19 @@ def buildPacket(hostname):
 	# Combine the flags
 	header += struct.pack("!H", int(qr + opcode + aa + tc + rd + ra + z + rc, 2))
 
-	# Unsigned 16-bit integer specifying the number of questions (1)
+	# Unsigned 16-bit value specifying the number of questions (1)
 	qdcount = 1
 	header += struct.pack("!H", qdcount)
 
-	# Unsigned 16-bit integer specifying the number of resource records (doesn't apply here)
+	# Unsigned 16-bit value specifying the number of resource records (doesn't apply here)
 	ancount = 0
 	header += struct.pack("!H", ancount)
 
-	# Unsigned 16-bit integer specifying the number of name server records (doesn't apply here)
+	# Unsigned 16-bit value specifying the number of name server records (doesn't apply here)
 	nscount = 0
 	header += struct.pack("!H", nscount)
 
-	# Unsigned 16-bit integer specifying the number of additional records (doesn't apply here)
+	# Unsigned 16-bit value specifying the number of additional records (doesn't apply here)
 	arcount = 0
 	header += struct.pack("!H", arcount)
 
@@ -82,13 +82,13 @@ def buildPacket(hostname):
 
 	# A sequence of labels, where each label consists of a length byte followed by that number of bytes
 	for piece in hostname.split('.'):
-		# IMPORTANT: Top two bits of the number must be '00' to indicate a label
+		# IMPORTANT: Top two bits of the length in binary must be '00' to indicate a label
 		# Therefore, no part of the domain name may exceed 63 bytes
 		if len(piece) > 63:
 			raise ValueError, "part of the domain name exceeds the maximum allowed length (63)"
-		# Length byte, "!B" identifier indicates network-formatted (big-endian) unsigned char (1 byte)
+		# First comes the length byte, "!B" identifier indicates network-formatted (big-endian) unsigned char (1 byte)
 		questionSegment += struct.pack("!B", len(piece))
-		# The bytes themselves
+		# Then the bytes for the name
 		for char in piece:
 			questionSegment += struct.pack("!B", ord(char))
 	# End of the hostname
@@ -119,9 +119,10 @@ def sendPacket(nameserver, packet):
 
 
 def parseResponse(response):
-	# Trim the response as it is parsed, but keep a copy of the original
+	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
-	# Parse header
+
+	# Parse the header
 	# Identifier
 	identifier, response = struct.unpack("!H", response[:2])[0], response[2:]
 
@@ -145,101 +146,116 @@ def parseResponse(response):
 		print "Return code:", int(rc, 2), "- ERROR" if int(rc, 2) != 0 else ''
 		print "Answers:", ancount
 
-	# Parse question, same as when building the packet
-	question = ''
-	# TODO: Loop qdcount times, assume only 1 question for now
+	# Parse the questions, same as when building the packet
+	questions = ''
+	# Loop qdcount times
 	for q in range(qdcount):
-		if len(question) > 0:
-			question += '\n'
+		# List each question on its own line
+		if len(questions) > 0:
+			questions += '\n'
+
 		# Name
 		# TODO: Refactor into its own function for reuse
 		while True:
 			qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
 			if qlen == 0:
 				break
-			question += '.' + response[:qlen] if len(question) > 0 else response[:qlen]
+			questions += '.' + response[:qlen] if len(questions) > 0 else response[:qlen]
 			response = response[qlen:]
+
 		# Type
 		qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		if qtype == TYPE['A']:
-			question += ', Type A'
+			questions += ', Type A'
 		elif qtype == TYPE['NS']:
 			pass
 		elif qtype == TYPE['CNAME']:
 			pass
+
 		# Class
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		if qclass == CLASS_IN:
-			question += ', Class IN'
+			questions += ', Class IN'
 	
 	if DEBUG:
-		print "Question:", question
+		print "Questions:", questions
 
 	# Parse answer
-	# TODO: Loop ancount times, assume only 1 answer for now
 	answer = ''
-	# Name, variable length
-	checkName = d2b(struct.unpack("!H", response[:2])[0])
-	label = ''
-	# If the binary representation of first two bytes starts with '11', name points to a label
-	if checkName[:2] == '11':
-		response = response[2:]
-		offset = int(checkName[2:], 2)
+	# Loop ancount times
+	for a in range(ancount):
+		# List each answer on its own line
+		if len(answer) > 0:
+			answer += '\n'
+
+		# Name, variable length
+		checkName = d2b(struct.unpack("!H", response[:2])[0])
+		label = ''
+		# If the binary representation of first two bytes starts with '11', name points to a label
+		if checkName[:2] == '11':
+			# Consume the two bytes and determine the offset of the name within the response
+			response = response[2:]
+			offset = int(checkName[2:], 2)
+
+			if DEBUG:
+				print "First two bits of name are set, points to offset", offset
+
+			# The question section has been consumed, so refer to the original response string 
+			offsetResponse = origResponse[offset:]
+			while True:
+				qlen, offsetResponse = struct.unpack("!B", offsetResponse[:1])[0], offsetResponse[1:]
+				if qlen == 0:
+					break
+				label += '.' + offsetResponse[:qlen] if len(label) > 0 else offsetResponse[:qlen]
+				offsetResponse = offsetResponse[qlen:]
+		# Otherwise, name is a label
+		else:
+			if DEBUG:
+				print "Name is a label"
+
+			while True:
+				qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
+				if qlen == 0:
+					break
+				label += '.' + response[:qlen] if len(label) > 0 else response[:qlen]
+				response = response[qlen:]
+
+		answer += label
+				
 		if DEBUG:
-			print "First two bits of name are set, points to offset", offset
-		# Refer to original response, since the question section has been consumed already
-		offsetResponse = origResponse[offset:]
-		while True:
-			qlen, offsetResponse = struct.unpack("!B", offsetResponse[:1])[0], offsetResponse[1:]
-			if qlen == 0:
-				break
-			label += '.' + offsetResponse[:qlen] if len(label) > 0 else offsetResponse[:qlen]
-			offsetResponse = offsetResponse[qlen:]
-	# Otherwise, name is a label
-	else:
-		if DEBUG:
-			print "Name is a label"
-		while True:
-			qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
-			if qlen == 0:
-				break
-			label += '.' + response[:qlen] if len(label) > 0 else response[:qlen]
-			response = response[qlen:]
-	answer += label
-			
-	if DEBUG:
-		print "Label at that offset:", label
+			print "Label at that offset:", label
 
-	# Type of the RDATA field
-	rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
-	if rtype == TYPE['A']:
-		answer += ', Type A'
-	elif rtype == TYPE['NS']:
-		pass
-	elif rtype == TYPE['CNAME']:
-		pass
+		# Type of the RDATA field
+		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
+		if rtype == TYPE['A']:
+			answer += ', Type A'
+		elif rtype == TYPE['NS']:
+			pass
+		elif rtype == TYPE['CNAME']:
+			pass
 
-	# Class of the RDATA field
-	rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
-	if rclass == CLASS_IN:
-		answer += ', Class IN'
+		# Class of the RDATA field
+		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
+		if rclass == CLASS_IN:
+			answer += ', Class IN'
 
-	# Unsigned 32-bit integer specifying the TTL in seconds
-	ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
-	answer += ', TTL ' + str(ttl)
+		# Unsigned 32-bit value specifying the TTL in seconds
+		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
+		answer += ', TTL ' + str(ttl)
 
-	# Unsigned 16-bit integer specifying the length of the RDATA field
-	rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
+		# Unsigned 16-bit value specifying the length of the RDATA field
+		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
 
-	# Variable-length data (depending on type of record) for the resource
-	if rtype == TYPE['A']:
-		try:
-			ip = socket.inet_ntoa(response)
-			answer += ', IP ' + ip
-		except socket.error:
-			print "Incorrect format for A-type RDATA"
-	elif rtype == TYPE['NS']:
-		pass
+		# Variable-length data (depending on type of record) for the resource
+		if rtype == TYPE['A']:
+			# A-type records return an IP address as a 32-bit unsigned value
+			try:
+				ip = socket.inet_ntoa(response)
+				answer += ', IP ' + ip
+			except socket.error:
+				print "Error: Incorrect format for A-type RDATA"
+		elif rtype == TYPE['NS']:
+			pass
 
 	print "Answer:", answer
 
