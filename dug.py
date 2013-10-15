@@ -6,6 +6,11 @@ import optparse, random, struct, socket
 
 DEBUG = True
 PORT = 53
+RECV_BUF = 1024
+TYPE = { 'A': 1,
+         'NS': 2,
+         'CNAME': 5 }
+CLASS_IN = 1
 
 
 # No bin() in 2.4
@@ -32,7 +37,7 @@ def buildPacket(hostname):
 	header = ''
 
 	# 16-bit identifier for the query (0 to 65535)
-	identifier = random.randint(0, 65535)
+	identifier = random.randrange(65535)
 
 	# The "!H" identifier indicates an unsigned short (2 bytes, 16 bits) formatted for network (big-endian)
 	header += struct.pack("!H", identifier)
@@ -89,16 +94,16 @@ def buildPacket(hostname):
 	questionSegment += struct.pack("!B", 0)
 
 	# Two-byte field specifying query type (A = 1)
-	qtype = 1
+	qtype = TYPE['A']
 	questionSegment += struct.pack("!H", qtype)
 
 	# Two-byte field specifying query class (IN = 1)
-	qclass = 1
+	qclass = CLASS_IN
 	questionSegment += struct.pack("!H", qclass)
 
 	if DEBUG:
 		print "%-8s %s" % ("Bytes:", repr(header + questionSegment))
-		print "%-8s %s" % ("Hex:", ''.join([ "%02x " % ord(x) for x in header + questionSegment ]).strip())
+		print "%-8s %s" % ("Hex:", ''.join(["%02x " % ord(x) for x in header + questionSegment]).strip())
 
 	return header + questionSegment
 
@@ -109,38 +114,53 @@ def sendPacket(nameserver, packet):
 	print "Sending packet"
 	sock.sendto(packet, (nameserver, PORT))
 	print "Receiving response"
-	data, addr = sock.recvfrom(1024)
+	data, addr = sock.recvfrom(RECV_BUF)
 	print "Received:", repr(data)
 	return data
 
 
 def parseResponse(response):
 	# Parse header
-	# Parse identifier
+	# Identifier
 	(identifier,), response = struct.unpack("!H", response[:2]), response[2:]
-	# Parse flags
+	# Flags
 	(flags,), response = struct.unpack("!H", response[:2]), response[2:]
 	flags = d2b(flags, 16)
 	qr, opcode, aa, tc, rd, ra, z, rc = flags[0], flags[1:5], flags[5], flags[6], flags[7], flags[8], flags[9:12], flags[12:]
-	# Parse number of questions
+	# Number of questions
 	(qdcount,), response = struct.unpack("!H", response[:2]), response[2:]
-	# Parse number of answers
+	# Number of answers
 	(ancount,), response = struct.unpack("!H", response[:2]), response[2:]
-	# Parse number of resource records
+	# Number of resource records
 	(nscount,), response = struct.unpack("!H", response[:2]), response[2:]
-	# Parse number of additional records
+	# Number of additional records
 	(arcount,), response = struct.unpack("!H", response[:2]), response[2:]
 
 	# Parse question
 	question = ''
+	# Name
 	while True:
 		(qlen,), response = struct.unpack("!B", response[:1]), response[1:]
 		if qlen == 0:
 			break
-		print qlen, repr(response[:qlen])
-		question += response[:qlen] + '.'
+		question += '.' + response[:qlen] if len(question) > 0 else response[:qlen]
 		response = response[qlen:]
-		print "response", repr(response)
+	# Type
+	(qtype,), response = struct.unpack("!H", response[:2]), response[:2]
+	if qtype == TYPE['A']:
+		question += ', Type A'
+	elif qtype == TYPE['NS']:
+		pass
+	elif qtype == TYPE['CNAME']:
+		pass
+	# Class
+	(qclass,), response = struct.unpack("!H", response[:2]), response[:2]
+	if qclass == CLASS_IN:
+		question += ', Class IN'
+	print question
+
+	# Parse answer
+
 
 
 def main():
