@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-# The machine this was designed to run on only has Python 2.4.3, hence the use of older modules
+# This script is designed to run on a machine that only has Python 2.4.3, hence the use of older modules
 import optparse, random, struct, socket
 
 
@@ -146,28 +146,31 @@ def parseResponse(response):
 		print "Answers:", ancount
 
 	# Parse question, same as when building the packet
-	# TODO: Loop qdcount times, assume only 1 question for now
 	question = ''
-	# Name
-	# TODO: Refactor into its own function for reuse
-	while True:
-		qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
-		if qlen == 0:
-			break
-		question += '.' + response[:qlen] if len(question) > 0 else response[:qlen]
-		response = response[qlen:]
-	# Type
-	qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
-	if qtype == TYPE['A']:
-		question += ', Type A'
-	elif qtype == TYPE['NS']:
-		pass
-	elif qtype == TYPE['CNAME']:
-		pass
-	# Class
-	qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
-	if qclass == CLASS_IN:
-		question += ', Class IN'
+	# TODO: Loop qdcount times, assume only 1 question for now
+	for q in range(qdcount):
+		if len(question) > 0:
+			question += '\n'
+		# Name
+		# TODO: Refactor into its own function for reuse
+		while True:
+			qlen, response = struct.unpack("!B", response[:1])[0], response[1:]
+			if qlen == 0:
+				break
+			question += '.' + response[:qlen] if len(question) > 0 else response[:qlen]
+			response = response[qlen:]
+		# Type
+		qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
+		if qtype == TYPE['A']:
+			question += ', Type A'
+		elif qtype == TYPE['NS']:
+			pass
+		elif qtype == TYPE['CNAME']:
+			pass
+		# Class
+		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
+		if qclass == CLASS_IN:
+			question += ', Class IN'
 	
 	if DEBUG:
 		print "Question:", question
