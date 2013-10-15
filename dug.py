@@ -115,14 +115,33 @@ def sendPacket(nameserver, packet):
 
 
 def parseResponse(response):
+	# Parse header
 	# Parse identifier
 	(identifier,), response = struct.unpack("!H", response[:2]), response[2:]
 	# Parse flags
 	(flags,), response = struct.unpack("!H", response[:2]), response[2:]
 	flags = d2b(flags, 16)
 	qr, opcode, aa, tc, rd, ra, z, rc = flags[0], flags[1:5], flags[5], flags[6], flags[7], flags[8], flags[9:12], flags[12:]
-	print qr, opcode, aa, tc, rd, ra, z, rc
-	
+	# Parse number of questions
+	(qdcount,), response = struct.unpack("!H", response[:2]), response[2:]
+	# Parse number of answers
+	(ancount,), response = struct.unpack("!H", response[:2]), response[2:]
+	# Parse number of resource records
+	(nscount,), response = struct.unpack("!H", response[:2]), response[2:]
+	# Parse number of additional records
+	(arcount,), response = struct.unpack("!H", response[:2]), response[2:]
+
+	# Parse question
+	question = ''
+	while True:
+		(qlen,), response = struct.unpack("!B", response[:1]), response[1:]
+		if qlen == 0:
+			break
+		print qlen, repr(response[:qlen])
+		question += response[:qlen] + '.'
+		response = response[qlen:]
+		print "response", repr(response)
+
 
 def main():
 	# Parse command-line arguments
