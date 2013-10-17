@@ -11,6 +11,13 @@ TYPE = { 'A': 1,
          'NS': 2,
          'CNAME': 5 }
 CLASS_IN = 1
+RCODE = { 0: 'Success',
+          1: 'Format error - The name server was unable to interpret the query',
+          2: 'Server failure - The name server was unable to process this query due to a problem with the name server',
+          # Only meaningful for responses from authoritative name servers
+          3: 'Name error - The domain name referenced in the query does not exist',
+          4: 'Not Implemented - The name server does not support the requested kind of query',
+          5: 'Refused - The name server refuses to perform the specified operation for policy reasons' }
 
 
 # No bin() in 2.4
@@ -152,7 +159,7 @@ def parseResponse(response):
 
 	if DEBUG:
 		print "ID:", identifier
-		print "Return code:", int(rc, 2), "(ERROR)" if int(rc, 2) != 0 else "(SUCCESS)"
+		print "Return code:", int(rc, 2), "(" + RCODE[int(rc, 2)] + ")"
 		print "Truncated:", 'Yes' if int(tc) else 'No'
 		print "Answers:", ancount
 		print "Authoritative:", 'Yes' if int(aa) else 'No'
@@ -249,7 +256,8 @@ def parseResponse(response):
 		elif rtype == TYPE['NS']:
 			pass
 
-	print "Answers:", answers
+	if ancount:
+		print "Answers:", answers
 
 
 def main():
