@@ -1,6 +1,12 @@
 #! /usr/bin/env python
 
-# This script is designed to run on a machine that only has Python 2.4.3, hence the use of older modules
+# This script is designed to run in Python 2.4.3, meaning:
+#   optparse instead of argparse
+#   struct instead of bytes
+#   d2b() instead of bin()
+#   No ternary statement
+#   Old string formatting
+
 import optparse, random, struct, socket
 
 
@@ -20,7 +26,6 @@ RCODE = { 0: 'Success',
           5: 'Refused - The name server refuses to perform the specified operation for policy reasons' }
 
 
-# No bin() in 2.4
 # Convert unsigned int n to binary representation, optionally specify number of bits
 # Based on http://stackoverflow.com/a/1519418/1693087
 def d2b(n, numBits = 0):
@@ -30,7 +35,10 @@ def d2b(n, numBits = 0):
 	if numBits and n > (2**numBits - 1):
 		raise ValueError, "not enough bits to represent " + str(n)
 	if n == 0:
-		return '0' * numBits if numBits else '0'
+		if numBits:
+			return '0' * numBits
+		else:
+			return '0'
 	while n > 0:
 		bStr = str(n % 2) + bStr
 		n = n >> 1
@@ -43,7 +51,10 @@ def parseLabels(returnText, byteString):
 		qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
 		if qlen == 0:
 			break
-		returnText += '.' + byteString[:qlen] if len(returnText) > 0 else byteString[:qlen]
+		if len(returnText) > 0:
+			returnText += '.' + byteString[:qlen]
+		else:
+			returnText += byteString[:qlen]
 		byteString = byteString[qlen:]
 	return returnText, byteString
 
@@ -135,6 +146,7 @@ def sendPacket(nameserver, packet):
 	print "Received:", repr(data)
 	return data
 
+
 # TODO: Handle errors
 def parseResponse(response):
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
@@ -160,9 +172,17 @@ def parseResponse(response):
 	if DEBUG:
 		print "ID:", identifier
 		print "Return code:", int(rc, 2), "(" + RCODE[int(rc, 2)] + ")"
-		print "Truncated:", 'Yes' if int(tc) else 'No'
+		print "Truncated:", 
+		if int(tc):
+			print 'Yes'
+		else:
+			print 'No'
 		print "Answers:", ancount
-		print "Authoritative:", 'Yes' if int(aa) else 'No'
+		print "Authoritative:",
+		if int(aa):
+			print 'Yes'
+		else:
+			print 'No'
 
 	# Parse the questions, same as when building the packet
 	questions = ''
@@ -216,7 +236,6 @@ def parseResponse(response):
 		else:
 			if DEBUG:
 				print "Name is a label"
-
 			label, response = parseLabels(label, response)
 
 		answers += label
