@@ -17,7 +17,7 @@ TYPE = { 'A': 1,
          'NS': 2,
          'CNAME': 5 }
 CLASS_IN = 1
-RCODE = { 0: 'Success',
+RCODE = { 0: 'No errors',
           1: 'Format error - The name server was unable to interpret the query',
           2: 'Server failure - The name server was unable to process this query due to a problem with the name server',
           # Only meaningful for responses from authoritative name servers
@@ -277,6 +277,8 @@ def parseResponse(response):
 
 	if ancount:
 		print "Answers:", answers
+	else:
+		print "No answers"
 
 
 def main():
