@@ -273,6 +273,8 @@ def parseResponse(response):
 				print "Error: Incorrect format for A-type RDATA"
 		elif rtype == TYPE['NS']:
 			pass
+		# Consume rdlen bytes of data
+		response = response[rdlen:]
 
 	if ancount:
 		print "Answers:", answers
