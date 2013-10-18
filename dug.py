@@ -203,30 +203,34 @@ def parseResponse(response):
 		print "Additional RRs:", arcount
 
 	# Parse the questions, same as when building the packet
-	questions = ''
+	questions = []
 	# Loop qdcount times
 	for q in range(qdcount):
+		questions.append([])
 		# List each question on its own line
-		if len(questions) > 0:
-			questions += '\n'
+		# if len(questions) > 0:
+		# 	questions += '\n'
 
 		# Name
 		name, response = parseLabel(response)
-		questions += name
+		questions[q].append(name)
+		# questions += name
 
 		# Type
 		qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
-		if qtype == TYPE['A']:
-			questions += ', Type A'
-		elif qtype == TYPE['NS']:
-			questions += ', Type NS'
-		elif qtype == TYPE['CNAME']:
-			questions += ', Type CNAME'
+		questions[q].append(qtype)
+		# if qtype == TYPE['A']:
+		# 	questions += ', Type A'
+		# elif qtype == TYPE['NS']:
+		# 	questions += ', Type NS'
+		# elif qtype == TYPE['CNAME']:
+		# 	questions += ', Type CNAME'
 
 		# Class
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
-		if qclass == CLASS_IN:
-			questions += ', Class IN'
+		questions[q].append(qclass)
+		# if qclass == CLASS_IN:
+		# 	questions += ', Class IN'
 	
 	if DEBUG:
 		print "Questions:", questions
