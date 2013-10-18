@@ -147,7 +147,6 @@ def sendPacket(nameserver, packet):
 	return data
 
 
-# TODO: Handle errors
 def parseResponse(response):
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
@@ -177,14 +176,14 @@ def parseResponse(response):
 			print 'Yes'
 		else:
 			print 'No'
-		print "Answers:", ancount
+		print "Answer RRs:", ancount
 		print "Authoritative:",
 		if int(aa):
 			print 'Yes'
 		else:
 			print 'No'
-		print "RRs:", nscount
-		print "Additional:", arcount
+		print "Authority RRs:", nscount
+		print "Additional RRs:", arcount
 
 	# Parse the questions, same as when building the packet
 	questions = ''
@@ -202,9 +201,9 @@ def parseResponse(response):
 		if qtype == TYPE['A']:
 			questions += ', Type A'
 		elif qtype == TYPE['NS']:
-			pass
+			questions += ', Type NS'
 		elif qtype == TYPE['CNAME']:
-			pass
+			questions += ', Type CNAME'
 
 		# Class
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
@@ -281,12 +280,6 @@ def parseResponse(response):
 		print "Answers:", answers
 	else:
 		print "No answers"
-
-	for n in range(nscount):
-		print "RR", n
-
-	for a in range(arcount):
-		print "A"
 
 
 def main():
