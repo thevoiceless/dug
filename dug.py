@@ -231,7 +231,6 @@ def parseResponse(response):
 	if DEBUG:
 		print "Questions:", questions
 
-	print "before answers, response is", repr(response)
 	# Parse answers
 	answers = ''
 	# Loop ancount times
@@ -241,35 +240,11 @@ def parseResponse(response):
 			answers += '\n'
 
 		# Name, variable length
-		checkName = d2b(struct.unpack("!H", response[:2])[0])
-		label = ''
-		# If the binary representation of first two bytes starts with '11', name points to a label
-		# if checkName[:2] == '11':
-		# 	# Consume the two bytes and determine the offset of the name within the response
-		# 	response = response[2:]
-		# 	offset = int(checkName[2:], 2)
-
-		# 	# The question section has been consumed, so refer to the original response string 
-		# 	offsetResponse = origResponse[offset:]
-		# 	label, r = parseLabel(label, offsetResponse, origResponse)
-		# 	print "r is", repr(r)
-		# 	print "response is", repr(response)
-		# # Otherwise, name is a label
-		# else:
-		# 	if DEBUG:
-		# 		print "Name is a label"
-		# 	print repr(response)
-		# 	label, response = parseLabel(label, response, origResponse)
-		label, response = parseLabel(response, origResponse)
-
-		answers += label
-				
-		# if DEBUG:
-		# 	print "First two bits of name are set, pointer to offset", offset, "=", label
+		name, response = parseLabel(response, origResponse)
+		answers += name
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
-		print "type is", rtype
 		if rtype == TYPE['A']:
 			answers += ', Type A'
 		elif rtype == TYPE['NS']:
@@ -279,14 +254,12 @@ def parseResponse(response):
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
-		print "class is", rclass
 		if rclass == CLASS_IN:
 			answers += ', Class IN'
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
 		answers += ', TTL ' + str(ttl)
-		print "ttl is", ttl
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
