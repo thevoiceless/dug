@@ -94,11 +94,11 @@ def buildPacket(hostname):
 	qdcount = 1
 	header += struct.pack("!H", qdcount)
 
-	# Unsigned 16-bit value specifying the number of resource records (doesn't apply here)
+	# Unsigned 16-bit value specifying the number of answer records (doesn't apply here)
 	ancount = 0
 	header += struct.pack("!H", ancount)
 
-	# Unsigned 16-bit value specifying the number of name server records (doesn't apply here)
+	# Unsigned 16-bit value specifying the number of authority records (doesn't apply here)
 	nscount = 0
 	header += struct.pack("!H", nscount)
 
@@ -164,7 +164,7 @@ def parseResponse(response):
 	qdcount, response = struct.unpack("!H", response[:2])[0], response[2:]
 	# Number of answers
 	ancount, response = struct.unpack("!H", response[:2])[0], response[2:]
-	# Number of resource records
+	# Number of authority records
 	nscount, response = struct.unpack("!H", response[:2])[0], response[2:]
 	# Number of additional records
 	arcount, response = struct.unpack("!H", response[:2])[0], response[2:]
@@ -183,6 +183,8 @@ def parseResponse(response):
 			print 'Yes'
 		else:
 			print 'No'
+		print "RRs:", nscount
+		print "Additional:", arcount
 
 	# Parse the questions, same as when building the packet
 	questions = ''
@@ -212,7 +214,7 @@ def parseResponse(response):
 	if DEBUG:
 		print "Questions:", questions
 
-	# Parse answer
+	# Parse answers
 	answers = ''
 	# Loop ancount times
 	for a in range(ancount):
@@ -279,6 +281,12 @@ def parseResponse(response):
 		print "Answers:", answers
 	else:
 		print "No answers"
+
+	for n in range(nscount):
+		print "RR", n
+
+	for a in range(arcount):
+		print "A"
 
 
 def main():
