@@ -34,7 +34,11 @@ def printQuestion(question):
 	print question[0], CLASS_NAMES[question[2]], TYPE_NAMES[question[1]]
 
 def printAnswer(answer):
-	print answer[0], answer[3], CLASS_NAMES[answers[2]], TYPE_NAMES[question[1]]
+	print answer[0], answer[3], CLASS_NAMES[answer[2]], TYPE_NAMES[answer[1]],
+	if len(answer) == 6:
+		print answer[5]
+	else:
+		print
 
 # Convert unsigned int n to binary representation, optionally specify number of bits
 # Based on http://stackoverflow.com/a/1519418/1693087
@@ -277,7 +281,9 @@ def parseResponse(response):
 		response = response[rdlen:]
 
 	if ancount:
-		print "Answers:", answers
+		print "Answers:"
+		for answer in answers:
+			printAnswer(answer)
 	else:
 		print "No answers"
 
