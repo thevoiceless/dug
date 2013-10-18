@@ -45,19 +45,25 @@ def d2b(n, numBits = 0):
 	return bStr.zfill(numBits)
 
 
-# Parse the labels from byteString and add the result to returnText
-def parseLabels(returnText, byteString, orig = None):
+# Parse the labels from byteString
+def parseLabel(byteString, orig = None):
 	label = ''
-	print "in function, byteString is", repr(byteString)
 	while True:
+		# If the binary representation of first two bytes starts with '11', name points to a label
 		checkPointer = d2b(struct.unpack("!H", byteString[:2])[0], 16)
 		if checkPointer[:2] == '11':
-			# print "Next part might be a pointer:", repr(byteString)
+			# Consume the two bytes and determine the offset of the name within the response
 			byteString = byteString[2:]
 			offset = int(checkPointer[2:], 2)
-			# print "offset", offset, "=", repr(orig[offset:])
-			plabel, _ = parseLabels(label, orig[offset:], orig)
-			return label + '.' + plabel, byteString
+			# The question section has been consumed, so refer to the original response string
+			plabel, _ = parseLabel(orig[offset:], orig)
+			if len(label) > 0:
+				label += '.' + plabel
+			else:
+				label += plabel
+			# Pointers terminate labels, so break and return
+			break
+		# Otherwise, name is a label, read it normally
 		else:
 			qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
 			if qlen == 0:
@@ -66,8 +72,6 @@ def parseLabels(returnText, byteString, orig = None):
 				label += '.' + byteString[:qlen]
 			else:
 				label += byteString[:qlen]
-			# print label
-			# print repr(byteString)
 			byteString = byteString[qlen:]
 	return label, byteString
 
@@ -207,7 +211,8 @@ def parseResponse(response):
 			questions += '\n'
 
 		# Name
-		questions, response = parseLabels(questions, response)
+		name, response = parseLabel(response)
+		questions += name
 
 		# Type
 		qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
@@ -246,7 +251,7 @@ def parseResponse(response):
 
 		# 	# The question section has been consumed, so refer to the original response string 
 		# 	offsetResponse = origResponse[offset:]
-		# 	label, r = parseLabels(label, offsetResponse, origResponse)
+		# 	label, r = parseLabel(label, offsetResponse, origResponse)
 		# 	print "r is", repr(r)
 		# 	print "response is", repr(response)
 		# # Otherwise, name is a label
@@ -254,8 +259,8 @@ def parseResponse(response):
 		# 	if DEBUG:
 		# 		print "Name is a label"
 		# 	print repr(response)
-		# 	label, response = parseLabels(label, response, origResponse)
-		label, response = parseLabels(label, response, origResponse)
+		# 	label, response = parseLabel(label, response, origResponse)
+		label, response = parseLabel(response, origResponse)
 
 		answers += label
 				
