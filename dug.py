@@ -48,11 +48,12 @@ def d2b(n, numBits = 0):
 # Parse the labels from byteString and add the result to returnText
 def parseLabels(returnText, byteString, orig = None):
 	while True:
-		p = d2b(struct.unpack("!H", byteString[:2])[0], 16)
-		if p[:2] == '11':
+		checkPointer = d2b(struct.unpack("!H", byteString[:2])[0], 16)
+		if checkPointer[:2] == '11':
 			print "Next part might be a pointer:", repr(byteString)
-			print "offset", int(p[2:], 2), "=", repr(orig[int(p[2:], 2):])
-			return parseLabels(returnText, orig[int(p[2:], 2):], orig)
+			offset = int(checkPointer[2:], 2)
+			print "offset", offset, "=", repr(orig[offset:])
+			return parseLabels(returnText, orig[offset:], orig)
 		qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
 		if qlen == 0:
 			break
@@ -254,6 +255,7 @@ def parseResponse(response):
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
+		print "type is", rtype
 		if rtype == TYPE['A']:
 			answers += ', Type A'
 		elif rtype == TYPE['NS']:
@@ -263,12 +265,14 @@ def parseResponse(response):
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
+		print "class is", rclass
 		if rclass == CLASS_IN:
 			answers += ', Class IN'
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
 		answers += ', TTL ' + str(ttl)
+		print "ttl is", ttl
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
