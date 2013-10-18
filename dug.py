@@ -16,7 +16,11 @@ RECV_BUF = 1024
 TYPE = { 'A': 1,
          'NS': 2,
          'CNAME': 5 }
-CLASS_IN = 1
+TYPE_NAMES = { 1: 'A',
+               2: 'NS',
+               5: 'CNAME' }
+CLASS = { 'IN': 1 }
+CLASS_NAMES = { 1: 'IN' }
 RCODE = { 0: 'No errors',
           1: 'Format error - The name server was unable to interpret the query',
           2: 'Server failure - The name server was unable to process this query due to a problem with the name server',
@@ -25,6 +29,12 @@ RCODE = { 0: 'No errors',
           4: 'Not Implemented - The name server does not support the requested kind of query',
           5: 'Refused - The name server refuses to perform the specified operation for policy reasons' }
 
+
+def printQuestion(question):
+	print question[0], CLASS_NAMES[question[2]], TYPE_NAMES[question[1]]
+
+def printAnswer(answer):
+	print answer[0], answer[3], CLASS_NAMES[answers[2]], TYPE_NAMES[question[1]]
 
 # Convert unsigned int n to binary representation, optionally specify number of bits
 # Based on http://stackoverflow.com/a/1519418/1693087
@@ -145,7 +155,7 @@ def buildPacket(hostname):
 	questionSegment += struct.pack("!H", qtype)
 
 	# Two-byte field specifying query class (IN = 1)
-	qclass = CLASS_IN
+	qclass = CLASS['IN']
 	questionSegment += struct.pack("!H", qclass)
 
 	if DEBUG:
@@ -206,69 +216,48 @@ def parseResponse(response):
 	questions = []
 	# Loop qdcount times
 	for q in range(qdcount):
+		# [name, qtype, qclass]
 		questions.append([])
-		# List each question on its own line
-		# if len(questions) > 0:
-		# 	questions += '\n'
 
 		# Name
 		name, response = parseLabel(response)
 		questions[q].append(name)
-		# questions += name
 
 		# Type
 		qtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		questions[q].append(qtype)
-		# if qtype == TYPE['A']:
-		# 	questions += ', Type A'
-		# elif qtype == TYPE['NS']:
-		# 	questions += ', Type NS'
-		# elif qtype == TYPE['CNAME']:
-		# 	questions += ', Type CNAME'
 
 		# Class
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		questions[q].append(qclass)
-		# if qclass == CLASS_IN:
-		# 	questions += ', Class IN'
 	
 	if DEBUG:
-		print "Questions:", questions
+		print "Questions:"
+		for question in questions:
+			printQuestion(question)
 
 	# Parse answers
 	answers = []
 	# Loop ancount times
 	for a in range(ancount):
+		# [name, rtype, rclass, ttl, rdlen, rdata]
 		answers.append([])
-		# List each answer on its own line
-		# if len(answers) > 0:
-		# 	answers += '\n'
 
 		# Name, variable length
 		name, response = parseLabel(response, origResponse)
 		answers[a].append(name)
-		# answers += name
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		answers[a].append(rtype)
-		# if rtype == TYPE['A']:
-		# 	answers += ', Type A'
-		# elif rtype == TYPE['NS']:
-		# 	answers += ', Type NS'
-		# elif rtype == TYPE['CNAME']:
-		# 	answers += ', Type CNAME'
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		answers[a].append(rclass)
-		# if rclass == CLASS_IN:
-		# 	answers += ', Class IN'
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
 		answers[a].append(ttl)
-		# answers += ', TTL ' + str(ttl)
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
@@ -280,7 +269,6 @@ def parseResponse(response):
 			try:
 				ip = socket.inet_ntoa(response)
 				answers[a].append(ip)
-				# answers += ', IP ' + ip
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
 		elif rtype == TYPE['NS']:
