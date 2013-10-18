@@ -236,44 +236,51 @@ def parseResponse(response):
 		print "Questions:", questions
 
 	# Parse answers
-	answers = ''
+	answers = []
 	# Loop ancount times
 	for a in range(ancount):
+		answers.append([])
 		# List each answer on its own line
-		if len(answers) > 0:
-			answers += '\n'
+		# if len(answers) > 0:
+		# 	answers += '\n'
 
 		# Name, variable length
 		name, response = parseLabel(response, origResponse)
-		answers += name
+		answers[a].append(name)
+		# answers += name
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
-		if rtype == TYPE['A']:
-			answers += ', Type A'
-		elif rtype == TYPE['NS']:
-			answers += ', Type NS'
-		elif rtype == TYPE['CNAME']:
-			answers += ', Type CNAME'
+		answers[a].append(rtype)
+		# if rtype == TYPE['A']:
+		# 	answers += ', Type A'
+		# elif rtype == TYPE['NS']:
+		# 	answers += ', Type NS'
+		# elif rtype == TYPE['CNAME']:
+		# 	answers += ', Type CNAME'
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
-		if rclass == CLASS_IN:
-			answers += ', Class IN'
+		answers[a].append(rclass)
+		# if rclass == CLASS_IN:
+		# 	answers += ', Class IN'
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
-		answers += ', TTL ' + str(ttl)
+		answers[a].append(ttl)
+		# answers += ', TTL ' + str(ttl)
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
+		answers[a].append(rdlen)
 
 		# Variable-length data (depending on type of record) for the resource
 		if rtype == TYPE['A']:
 			# A-type records return an IP address as a 32-bit unsigned value
 			try:
 				ip = socket.inet_ntoa(response)
-				answers += ', IP ' + ip
+				answers[a].append(ip)
+				# answers += ', IP ' + ip
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
 		elif rtype == TYPE['NS']:
