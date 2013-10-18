@@ -46,8 +46,13 @@ def d2b(n, numBits = 0):
 
 
 # Parse the labels from byteString and add the result to returnText
-def parseLabels(returnText, byteString):
+def parseLabels(returnText, byteString, orig = None):
 	while True:
+		p = d2b(struct.unpack("!H", byteString[:2])[0], 16)
+		if p[:2] == '11':
+			print "Next part might be a pointer:", repr(byteString)
+			print "offset", int(p[2:], 2), "=", repr(orig[int(p[2:], 2):])
+			return parseLabels(returnText, orig[int(p[2:], 2):], orig)
 		qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
 		if qlen == 0:
 			break
@@ -55,6 +60,8 @@ def parseLabels(returnText, byteString):
 			returnText += '.' + byteString[:qlen]
 		else:
 			returnText += byteString[:qlen]
+		print returnText
+		print repr(byteString)
 		byteString = byteString[qlen:]
 	return returnText, byteString
 
@@ -232,12 +239,13 @@ def parseResponse(response):
 
 			# The question section has been consumed, so refer to the original response string 
 			offsetResponse = origResponse[offset:]
-			label, _ = parseLabels(label, offsetResponse)
+			label, _ = parseLabels(label, offsetResponse, origResponse)
 		# Otherwise, name is a label
 		else:
 			if DEBUG:
 				print "Name is a label"
-			label, response = parseLabels(label, response)
+			print repr(response)
+			label, response = parseLabels(label, response, origResponse)
 
 		answers += label
 				
@@ -249,9 +257,9 @@ def parseResponse(response):
 		if rtype == TYPE['A']:
 			answers += ', Type A'
 		elif rtype == TYPE['NS']:
-			pass
+			answers += ', Type NS'
 		elif rtype == TYPE['CNAME']:
-			pass
+			answers += ', Type CNAME'
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
