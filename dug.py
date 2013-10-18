@@ -47,24 +47,29 @@ def d2b(n, numBits = 0):
 
 # Parse the labels from byteString and add the result to returnText
 def parseLabels(returnText, byteString, orig = None):
+	label = ''
+	print "in function, byteString is", repr(byteString)
 	while True:
 		checkPointer = d2b(struct.unpack("!H", byteString[:2])[0], 16)
 		if checkPointer[:2] == '11':
-			print "Next part might be a pointer:", repr(byteString)
+			# print "Next part might be a pointer:", repr(byteString)
+			byteString = byteString[2:]
 			offset = int(checkPointer[2:], 2)
-			print "offset", offset, "=", repr(orig[offset:])
-			return parseLabels(returnText, orig[offset:], orig)
-		qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
-		if qlen == 0:
-			break
-		if len(returnText) > 0:
-			returnText += '.' + byteString[:qlen]
+			# print "offset", offset, "=", repr(orig[offset:])
+			plabel, _ = parseLabels(label, orig[offset:], orig)
+			return label + '.' + plabel, byteString
 		else:
-			returnText += byteString[:qlen]
-		print returnText
-		print repr(byteString)
-		byteString = byteString[qlen:]
-	return returnText, byteString
+			qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
+			if qlen == 0:
+				break
+			if len(label) > 0:
+				label += '.' + byteString[:qlen]
+			else:
+				label += byteString[:qlen]
+			# print label
+			# print repr(byteString)
+			byteString = byteString[qlen:]
+	return label, byteString
 
 
 # Build the DNS datagram
@@ -221,6 +226,7 @@ def parseResponse(response):
 	if DEBUG:
 		print "Questions:", questions
 
+	print "before answers, response is", repr(response)
 	# Parse answers
 	answers = ''
 	# Loop ancount times
@@ -233,25 +239,28 @@ def parseResponse(response):
 		checkName = d2b(struct.unpack("!H", response[:2])[0])
 		label = ''
 		# If the binary representation of first two bytes starts with '11', name points to a label
-		if checkName[:2] == '11':
-			# Consume the two bytes and determine the offset of the name within the response
-			response = response[2:]
-			offset = int(checkName[2:], 2)
+		# if checkName[:2] == '11':
+		# 	# Consume the two bytes and determine the offset of the name within the response
+		# 	response = response[2:]
+		# 	offset = int(checkName[2:], 2)
 
-			# The question section has been consumed, so refer to the original response string 
-			offsetResponse = origResponse[offset:]
-			label, _ = parseLabels(label, offsetResponse, origResponse)
-		# Otherwise, name is a label
-		else:
-			if DEBUG:
-				print "Name is a label"
-			print repr(response)
-			label, response = parseLabels(label, response, origResponse)
+		# 	# The question section has been consumed, so refer to the original response string 
+		# 	offsetResponse = origResponse[offset:]
+		# 	label, r = parseLabels(label, offsetResponse, origResponse)
+		# 	print "r is", repr(r)
+		# 	print "response is", repr(response)
+		# # Otherwise, name is a label
+		# else:
+		# 	if DEBUG:
+		# 		print "Name is a label"
+		# 	print repr(response)
+		# 	label, response = parseLabels(label, response, origResponse)
+		label, response = parseLabels(label, response, origResponse)
 
 		answers += label
 				
-		if DEBUG:
-			print "First two bits of name are set, pointer to offset", offset, "=", label
+		# if DEBUG:
+		# 	print "First two bits of name are set, pointer to offset", offset, "=", label
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
