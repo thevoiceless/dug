@@ -342,9 +342,12 @@ def parseResponse(response, hostname, nameserver):
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
 
+	print "response after answers:", repr(response)
+
 	# Loop nscount times
 	for ns in range(nscount):
 		print "NS", ns + 1
+		print "response", repr(response)
 		# [name, rtype, rclass, ttl, rdlen, rdata]
 		authorities.append([])
 
