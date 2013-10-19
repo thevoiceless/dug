@@ -311,10 +311,10 @@ def parseResponse(response, hostname, nameserver):
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		questions[q].append(qclass)
 	
-	# if DEBUG:
-	# 	print "Questions:"
-	# 	for question in questions:
-	# 		printQuestion(question)
+	if DEBUG:
+		print "Questions:"
+		for question in questions:
+			printQuestion(question)
 
 	# There normally won't be multiple questions, so this only inspects the first one
 	# TODO: for eachQuestion in questions...
