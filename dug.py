@@ -117,54 +117,50 @@ def parseRRs(outputList, recordCount, response, origResponse):
 	# Loop recordCount times
 	# print "loop", recordCount, "times"
 	for rec in range(recordCount):
-		print "----- RR", rec+1
+		# print "----- RR", rec+1
 		# [name, rtype, rclass, ttl, rdlen, rdata]
 		outputList.append([])
 
 		# Name, variable length
 		name, response = parseLabel(response, origResponse)
 		outputList[rec].append(name)
-		print "name", name
+		# print "name", name
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rtype)
-		print "type", rtype
+		# print "type", rtype
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rclass)
-		print "class", rclass
+		# print "class", rclass
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
 		outputList[rec].append(ttl)
-		print "ttl", ttl
+		# print "ttl", ttl
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rdlen)
-		print "len", rdlen
+		# print "len", rdlen
 
 		# Variable-length data (depending on type of record) for the resource
 		if rtype == TYPE['A']:
 			# A-type records return an IP address as a 32-bit unsigned value
 			try:
 				ip = socket.inet_ntoa(response[:4])
-				print "ip", ip
+				# print "ip", ip
 				outputList[rec].append(ip)
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
 				print outputList
 				print repr(response)
 				sys.exit(1)
-		elif rtype == TYPE['NS']:
+		elif rtype == TYPE['NS'] or rtype == TYPE['CNAME']:
 			name, _ = parseLabel(response, origResponse)
-			print "NS name", name
-			outputList[rec].append(name)
-		elif rtype == TYPE['CNAME']:
-			name, _ = parseLabel(response, origResponse)
-			print "CNAME name", name
+			# print "name", name
 			outputList[rec].append(name)
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
@@ -337,26 +333,27 @@ def parseResponse(response, hostname, nameserver):
 	# print "Parse", arcount, "additional RRs"
 	response = parseRRs(additionals, arcount, response, origResponse)
 
-	if ancount:
-		print "Answers:"
-		for answer in answers:
-			printAnswer(answer)
-	else:
-		print "No answers"
+	if DEBUG:
+		if ancount:
+			print "Answers:"
+			for answer in answers:
+				printAnswer(answer)
+		else:
+			print "No answers"
 
-	if nscount:
-		print "Authority:"
-		for auth in authorities:
-			printAnswer(auth)
-	else:
-		print "No authority RRs"
+		if nscount:
+			print "Authority:"
+			for auth in authorities:
+				printAnswer(auth)
+		else:
+			print "No authority RRs"
 
-	if arcount:
-		print "Additional:"
-		for add in additionals:
-			printAnswer(add)
-	else:
-		print "No additional RRs"
+		if arcount:
+			print "Additional:"
+			for add in additionals:
+				printAnswer(add)
+		else:
+			print "No additional RRs"
 
 	# For A-type requests, check for answers
 	if qtype == TYPE['A']:
@@ -378,7 +375,7 @@ def parseResponse(response, hostname, nameserver):
 						# Parse the response
 						parseResponse(response, answer[ADATA], nameserver)
 						break
-					# Otherwise, we'll just use the other answers
+					# Otherwise, we'll just show the other answers
 					else:
 						continue
 				print answer[ADATA]
@@ -391,6 +388,7 @@ def parseResponse(response, hostname, nameserver):
 			response = sendPacket(nameserver, packet)
 			# Parse the response
 			parseResponse(response, hostname, nameserver)
+
 	# For NS-type requests, check the authority section
 	# If no NS records are returned, query the root E nameserver (after that, records should always be returned)
 	elif qtype == TYPE['NS']:
@@ -416,6 +414,9 @@ def parseResponse(response, hostname, nameserver):
 			response = sendPacket(ROOT_E, packet)
 			# Parse the response
 			parseResponse(response, hostname, ROOT_E)
+
+	# TODO: Refactor repeated building/sending/parsing into single block right here?
+	# TODO: If so, would need to halt execution after printing answers above
 
 
 def main():
