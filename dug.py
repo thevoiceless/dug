@@ -13,16 +13,17 @@ import optparse, random, struct, socket, sys
 DEBUG = True
 PORT = 53
 RECV_BUF = 1024
+# Map types to ints and ints to types
 TYPE = { 'A': 1,
          'NS': 2,
-         'CNAME': 5,
-         'AAAA': 28 }
+         'CNAME': 5 }
 TYPE_NAMES = { 1: 'A',
                2: 'NS',
-               5: 'CNAME',
-               28: 'AAAA' }
+               5: 'CNAME' }
+# Map classes to ints and ints to classes
 CLASS = { 'IN': 1 }
 CLASS_NAMES = { 1: 'IN' }
+# Map return codes to messages
 RCODE = { 0: 'No errors',
           1: 'Format error - The name server was unable to interpret the query',
           2: 'Server failure - The name server was unable to process this query due to a problem with the name server',
@@ -30,16 +31,30 @@ RCODE = { 0: 'No errors',
           3: 'Name error - The domain name referenced in the query does not exist',
           4: 'Not Implemented - The name server does not support the requested kind of query',
           5: 'Refused - The name server refuses to perform the specified operation for policy reasons' }
+# Indices in lists used to store results
+# TODO: Use resource record objects
+QNAME = 0
+QTYPE = 1
+QCLASS = 2
+ANAME = 0
+ATYPE = 1
+ACLASS = 2
+ATTL = 3
+ADATA = 5
 
 
 def printQuestion(question):
-	print question[0], CLASS_NAMES[question[2]], TYPE_NAMES[question[1]]
+	print question[QNAME], CLASS_NAMES[question[QCLASS]], TYPE_NAMES[question[QTYPE]]
 
 
 def printAnswer(answer):
-	print answer[0], answer[3], CLASS_NAMES[answer[2]], TYPE_NAMES[answer[1]],
+	print answer[ANAME], answer[ATTL], CLASS_NAMES[answer[ACLASS]],
+	try:
+		print TYPE_NAMES[answer[ATYPE]],
+	except KeyError:
+		print "type", answer[ATYPE],
 	if len(answer) == 6:
-		print answer[5]
+		print answer[ADATA]
 	else:
 		print
 
@@ -340,32 +355,37 @@ def parseResponse(response, hostname, nameserver):
 		print "No additional RRs"
 
 	if qtype == TYPE['A']:
-		# if ancount:
-		# 	print "Answers:"
-		# 	for answer in answers:
-		# 		printAnswer(answer)
-		# else:
-		print "Send NS request"
-		# Build the packet
-		packet = buildPacket(hostname, TYPE['NS'])
-		# Send the packet
-		response = sendPacket(nameserver, packet)
-		# Parse the response
-		parseResponse(response, hostname, nameserver)
+		if ancount:
+			if int(aa):
+				print "Authoritative:"
+			else:
+				print "Non-authoritative:"
+			for answer in answers:
+				print answer[5]
+		else:
+			print "Send NS request"
+			# Build the packet
+			packet = buildPacket(hostname, TYPE['NS'])
+			# Send the packet
+			response = sendPacket(nameserver, packet)
+			# Parse the response
+			parseResponse(response, hostname, nameserver)
 	# For NS-type requests, check the authority section
 	elif qtype == TYPE['NS']:
-		pickNS = authorities[0][5]
-		nsIP = ''
-		for a in additionals:
-			if a[0] == pickNS:
-				nsIP = a[5]
-		print "Now query", pickNS, "=", nsIP
-		# print "NS,", nscount, "records"
-		# if nscount:
-		# 	print "Authority:"
-		# 	for auth in authorities:
-		# 		printAnswer(auth)
-		pass
+		if nscount:
+			pickNS = authorities[0][5]
+			nsIP = ''
+			for a in additionals:
+				if a[ANAME] == pickNS and a[ATYPE] == TYPE['A']:
+					nsIP = a[ADATA]
+			print "Now query", pickNS, "=", nsIP
+			packet = buildPacket(hostname, TYPE['A'])
+			# Send the packet
+			response = sendPacket(nsIP, packet)
+			# Parse the response
+			parseResponse(response, hostname, nsIP)
+		else:
+			print "Failure - No NS records"
 
 
 def main():
