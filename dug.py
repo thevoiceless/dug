@@ -15,10 +15,12 @@ PORT = 53
 RECV_BUF = 1024
 TYPE = { 'A': 1,
          'NS': 2,
-         'CNAME': 5 }
+         'CNAME': 5,
+         'AAAA': 28 }
 TYPE_NAMES = { 1: 'A',
                2: 'NS',
-               5: 'CNAME' }
+               5: 'CNAME',
+               28: 'AAAA' }
 CLASS = { 'IN': 1 }
 CLASS_NAMES = { 1: 'IN' }
 RCODE = { 0: 'No errors',
@@ -132,7 +134,8 @@ def parseRRs(outputList, recordCount, response, origResponse):
 		if rtype == TYPE['A']:
 			# A-type records return an IP address as a 32-bit unsigned value
 			try:
-				ip = socket.inet_ntoa(response)
+				ip = socket.inet_ntoa(response[:4])
+				# print "ip", ip
 				outputList[rec].append(ip)
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
@@ -142,6 +145,7 @@ def parseRRs(outputList, recordCount, response, origResponse):
 		elif rtype == TYPE['NS']:
 			name, _ = parseLabel(response, origResponse)
 			# print "name", name
+			# print "NS name", name
 			outputList[rec].append(name)
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
@@ -305,30 +309,63 @@ def parseResponse(response, hostname, nameserver):
 
 	answers = []
 	authorities = []
+	additionals = []
 
+	# print "Parse", ancount, "answers"
 	response = parseRRs(answers, ancount, response, origResponse)
+	# print "Parse", nscount, "authority RRs"
 	response = parseRRs(authorities, nscount, response, origResponse)
+	# print "Parse", arcount, "additional RRs"
+	response = parseRRs(additionals, arcount, response, origResponse)
+
+	if ancount:
+		print "Answers:"
+		for answer in answers:
+			printAnswer(answer)
+	else:
+		print "No answers"
+
+	if nscount:
+		print "Authority:"
+		for auth in authorities:
+			printAnswer(auth)
+	else:
+		print "No authority RRs"
+
+	if arcount:
+		print "Additional:"
+		for add in additionals:
+			printAnswer(add)
+	else:
+		print "No additional RRs"
 
 	if qtype == TYPE['A']:
-		if ancount:
-			print "Answers:"
-			for answer in answers:
-				printAnswer(answer)
-		else:
-			print "No answers, send NS request"
-			# Build the packet
-			packet = buildPacket(hostname, TYPE['NS'])
-			# Send the packet
-			response = sendPacket(nameserver, packet)
-			# Parse the response
-			parseResponse(response, hostname, nameserver)
+		# if ancount:
+		# 	print "Answers:"
+		# 	for answer in answers:
+		# 		printAnswer(answer)
+		# else:
+		print "Send NS request"
+		# Build the packet
+		packet = buildPacket(hostname, TYPE['NS'])
+		# Send the packet
+		response = sendPacket(nameserver, packet)
+		# Parse the response
+		parseResponse(response, hostname, nameserver)
 	# For NS-type requests, check the authority section
 	elif qtype == TYPE['NS']:
-		print "NS,", nscount, "records"
-		if nscount:
-			print "Authority:"
-			for auth in authorities:
-				printAnswer(auth)
+		pickNS = authorities[0][5]
+		nsIP = ''
+		for a in additionals:
+			if a[0] == pickNS:
+				nsIP = a[5]
+		print "Now query", pickNS, "=", nsIP
+		# print "NS,", nscount, "records"
+		# if nscount:
+		# 	print "Authority:"
+		# 	for auth in authorities:
+		# 		printAnswer(auth)
+		pass
 
 
 def main():
