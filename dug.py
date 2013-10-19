@@ -312,7 +312,7 @@ def parseResponse(response, hostname, nameserver):
 		questions[q].append(qclass)
 	
 	if DEBUG:
-		print "Questions:"
+		print "Questions asked to " + hostname + ":"
 		for question in questions:
 			printQuestion(question)
 
@@ -360,9 +360,9 @@ def parseResponse(response, hostname, nameserver):
 		# Display any answers that are present
 		if ancount:
 			if int(aa):
-				print "Authoritative:"
+				print "Authoritative answer:"
 			else:
-				print "Non-authoritative:"
+				print "Non-authoritative answer:"
 			for answer in answers:
 				if answer[ATYPE] == TYPE['CNAME']:
 					# If the only answer is a CNAME alias for another hostname, we need the A record for the alias
