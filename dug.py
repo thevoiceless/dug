@@ -60,12 +60,15 @@ def d2b(n, numBits = 0):
 
 
 # Parse the labels from byteString
+# The orig parameter is not needed when parsing labels in question sections, as those shouldn't have pointers
 def parseLabel(byteString, orig = None):
 	label = ''
 	while True:
 		# If the binary representation of first two bytes starts with '11', name points to a label
 		checkPointer = d2b(struct.unpack("!H", byteString[:2])[0], 16)
 		if checkPointer[:2] == '11':
+			if not orig:
+				raise ValueError, "must pass the original response to parseLabel"
 			# Consume the two bytes and determine the offset of the name within the response
 			byteString = byteString[2:]
 			offset = int(checkPointer[2:], 2)
@@ -92,7 +95,7 @@ def parseLabel(byteString, orig = None):
 
 # Build the DNS datagram
 # Uses the struct module to convert values to their byte representation
-def buildPacket(hostname):
+def buildPacket(hostname, queryType):
 	# Build the header
 	header = ''
 
@@ -154,8 +157,8 @@ def buildPacket(hostname):
 	# End of the hostname
 	questionSegment += struct.pack("!B", 0)
 
-	# Two-byte field specifying query type (A = 1)
-	qtype = TYPE['A']
+	# Two-byte field specifying query type
+	qtype = queryType
 	questionSegment += struct.pack("!H", qtype)
 
 	# Two-byte field specifying query class (IN = 1)
@@ -304,7 +307,7 @@ def main():
 	nameserver = args[1]
 
 	# Build the packet
-	packet = buildPacket(hostname)
+	packet = buildPacket(hostname, TYPE['A'])
 	# Send the packet
 	response = sendPacket(nameserver, packet)
 	# Parse the response
