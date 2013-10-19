@@ -117,41 +117,41 @@ def parseRRs(outputList, recordCount, response, origResponse):
 	# Loop recordCount times
 	# print "loop", recordCount, "times"
 	for rec in range(recordCount):
-		# print "----- RR", rec+1
+		print "----- RR", rec+1
 		# [name, rtype, rclass, ttl, rdlen, rdata]
 		outputList.append([])
 
 		# Name, variable length
 		name, response = parseLabel(response, origResponse)
 		outputList[rec].append(name)
-		# print "name", name
+		print "name", name
 
 		# Type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rtype)
-		# print "type", rtype
+		print "type", rtype
 
 		# Class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rclass)
-		# print "class", rclass
+		print "class", rclass
 
 		# Unsigned 32-bit value specifying the TTL in seconds
 		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
 		outputList[rec].append(ttl)
-		# print "ttl", ttl
+		print "ttl", ttl
 
 		# Unsigned 16-bit value specifying the length of the RDATA field
 		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rdlen)
-		# print "len", rdlen
+		print "len", rdlen
 
 		# Variable-length data (depending on type of record) for the resource
 		if rtype == TYPE['A']:
 			# A-type records return an IP address as a 32-bit unsigned value
 			try:
 				ip = socket.inet_ntoa(response[:4])
-				# print "ip", ip
+				print "ip", ip
 				outputList[rec].append(ip)
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
@@ -160,8 +160,11 @@ def parseRRs(outputList, recordCount, response, origResponse):
 				sys.exit(1)
 		elif rtype == TYPE['NS']:
 			name, _ = parseLabel(response, origResponse)
-			# print "name", name
-			# print "NS name", name
+			print "NS name", name
+			outputList[rec].append(name)
+		elif rtype == TYPE['CNAME']:
+			name, _ = parseLabel(response, origResponse)
+			print "CNAME name", name
 			outputList[rec].append(name)
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
@@ -355,14 +358,31 @@ def parseResponse(response, hostname, nameserver):
 	else:
 		print "No additional RRs"
 
+	# For A-type requests, check for answers
 	if qtype == TYPE['A']:
+		# Display any answers that are present
 		if ancount:
 			if int(aa):
 				print "Authoritative:"
 			else:
 				print "Non-authoritative:"
 			for answer in answers:
-				print answer[5]
+				if answer[ATYPE] == TYPE['CNAME']:
+					# If the only answer is a CNAME alias for another hostname, we need the A record for the alias
+					# There's a good chance this will mess up the output, but I haven't tested it
+					if ancount == 1:
+						# Build the packet
+						packet = buildPacket(answer[ADATA], TYPE['A'])
+						# Send the packet
+						response = sendPacket(nameserver, packet)
+						# Parse the response
+						parseResponse(response, answer[ADATA], nameserver)
+						break
+					# Otherwise, we'll just use the other answers
+					else:
+						continue
+				print answer[ADATA]
+		# Otherwise, make an NS query to determine who we should be asking 
 		else:
 			print "Send NS request"
 			# Build the packet
@@ -372,8 +392,10 @@ def parseResponse(response, hostname, nameserver):
 			# Parse the response
 			parseResponse(response, hostname, nameserver)
 	# For NS-type requests, check the authority section
+	# If no NS records are returned, query the root E nameserver (after that, records should always be returned)
 	elif qtype == TYPE['NS']:
 		if nscount:
+			# Assume that if a nameserver is known, so is its IP
 			pickNS = authorities[0][5]
 			nsIP = ''
 			for a in additionals:
