@@ -7,7 +7,7 @@
 #   No ternary statement
 #   Old string formatting
 
-import optparse, random, struct, socket
+import optparse, random, struct, socket, sys
 
 
 DEBUG = True
@@ -91,6 +91,54 @@ def parseLabel(byteString, orig = None):
 				label += byteString[:qlen]
 			byteString = byteString[qlen:]
 	return label, byteString
+
+
+def parseRRs(outputList, recordCount, response, origResponse):
+	# Loop recordCount times
+	for rec in range(recordCount):
+		# [name, rtype, rclass, ttl, rdlen, rdata]
+		outputList.append([])
+
+		# Name, variable length
+		name, response = parseLabel(response, origResponse)
+		outputList[rec].append(name)
+		print "name", name
+
+		# Type of the RDATA field
+		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
+		outputList[rec].append(rtype)
+		print "type", rtype
+
+		# Class of the RDATA field
+		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
+		outputList[rec].append(rclass)
+		print "class", rclass
+
+		# Unsigned 32-bit value specifying the TTL in seconds
+		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
+		outputList[rec].append(ttl)
+		print "ttl", ttl
+
+		# Unsigned 16-bit value specifying the length of the RDATA field
+		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
+		outputList[rec].append(rdlen)
+		print "len", rdlen
+
+		# Variable-length data (depending on type of record) for the resource
+		if rtype == TYPE['A']:
+			# A-type records return an IP address as a 32-bit unsigned value
+			try:
+				ip = socket.inet_ntoa(response)
+				outputList[rec].append(ip)
+			except socket.error:
+				print "Error: Incorrect format for A-type RDATA"
+				sys.exit(1)
+		elif rtype == TYPE['NS']:
+			pass
+		# Consume rdlen bytes of data
+		response = response[rdlen:]
+
+	return response
 
 
 # Build the DNS datagram
@@ -181,7 +229,7 @@ def sendPacket(nameserver, packet):
 	return data
 
 
-def parseResponse(response):
+def parseResponse(response, hostname, nameserver):
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
 
@@ -243,8 +291,18 @@ def parseResponse(response):
 		for question in questions:
 			printQuestion(question)
 
-	# Parse answers
+	# There normally won't be multiple questions, so this only inspects the first one
+	# TODO: for eachQuestion in questions...
+	qtype = questions[0][1]
+
 	answers = []
+	authorities = []
+	additionals = []
+
+	# response = parseRRs(answers, ancount, response, origResponse)
+	# response = parseRRs(authorities, nscount, response, origResponse)
+	# response = parseRRs(additionals, arcount, response, origResponse)
+
 	# Loop ancount times
 	for a in range(ancount):
 		# [name, rtype, rclass, ttl, rdlen, rdata]
@@ -278,17 +336,77 @@ def parseResponse(response):
 				answers[a].append(ip)
 			except socket.error:
 				print "Error: Incorrect format for A-type RDATA"
+				sys.exit(1)
 		elif rtype == TYPE['NS']:
 			pass
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
 
-	if ancount:
-		print "Answers:"
-		for answer in answers:
-			printAnswer(answer)
-	else:
-		print "No answers"
+	# Loop nscount times
+	for ns in range(nscount):
+		print "NS", ns + 1
+		# [name, rtype, rclass, ttl, rdlen, rdata]
+		authorities.append([])
+
+		# Name, variable length
+		name, response = parseLabel(response, origResponse)
+		print "name:", repr(name)
+		authorities[ns].append(name)
+
+		# Type of the RDATA field
+		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
+		authorities[ns].append(rtype)
+
+		# Class of the RDATA field
+		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
+		authorities[ns].append(rclass)
+
+		# Unsigned 32-bit value specifying the TTL in seconds
+		ttl, response = struct.unpack("!I", response[:4])[0], response[4:]
+		authorities[ns].append(ttl)
+
+		# Unsigned 16-bit value specifying the length of the RDATA field
+		rdlen, response = struct.unpack("!H", response[:2])[0], response[2:]
+		authorities[ns].append(rdlen)
+
+		# Variable-length data (depending on type of record) for the resource
+		if rtype == TYPE['A']:
+			# A-type records return an IP address as a 32-bit unsigned value
+			try:
+				ip = socket.inet_ntoa(response)
+				authorities[ns].append(ip)
+			except socket.error:
+				print "Error: Incorrect format for A-type RDATA"
+				sys.exit(1)
+		elif rtype == TYPE['NS']:
+			name, response = parseLabel(response, origResponse)
+			print "NS name:", name
+			authorities[ns].append(name)
+		# Consume rdlen bytes of data
+		response = response[rdlen:]
+		print "Response after NS", str(ns+1) + ":", repr(response)
+		print "NS records:", authorities
+
+	if qtype == TYPE['A']:
+		if ancount:
+			print "Answers:"
+			for answer in answers:
+				printAnswer(answer)
+		else:
+			print "No answers, send NS request"
+			# Build the packet
+			packet = buildPacket(hostname, TYPE['NS'])
+			# Send the packet
+			response = sendPacket(nameserver, packet)
+			# Parse the response
+			parseResponse(response, hostname, nameserver)
+	# For NS-type requests, check the authority section
+	elif qtype == TYPE['NS']:
+		print "NS,", nscount, "records"
+		if nscount:
+			print "Authority:"
+			for auth in authorities:
+				printAnswer(auth)
 
 
 def main():
@@ -311,7 +429,7 @@ def main():
 	# Send the packet
 	response = sendPacket(nameserver, packet)
 	# Parse the response
-	parseResponse(response)
+	parseResponse(response, hostname, nameserver)
 
 
 # __name__ will be '__main__' if this code is being run directly (i.e. 'python dug.py')
