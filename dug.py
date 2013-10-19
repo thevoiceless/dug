@@ -13,6 +13,7 @@ import optparse, random, struct, socket, sys
 DEBUG = True
 PORT = 53
 RECV_BUF = 1024
+ROOT_E = '192.203.230.10'
 # Map types to ints and ints to types
 TYPE = { 'A': 1,
          'NS': 2,
@@ -386,6 +387,13 @@ def parseResponse(response, hostname, nameserver):
 			parseResponse(response, hostname, nsIP)
 		else:
 			print "Failure - No NS records"
+			print "Ask root nameserver"
+			# Build the packet
+			packet = buildPacket(hostname, TYPE['NS'])
+			# Send the packet
+			response = sendPacket(ROOT_E, packet)
+			# Parse the response
+			parseResponse(response, hostname, ROOT_E)
 
 
 def main():
