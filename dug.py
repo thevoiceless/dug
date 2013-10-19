@@ -312,7 +312,7 @@ def parseResponse(response, hostname, nameserver):
 		questions[q].append(qclass)
 	
 	if DEBUG:
-		print "Questions asked to " + hostname + ":"
+		print "Questions asked to " + nameserver + ":"
 		for question in questions:
 			printQuestion(question)
 
