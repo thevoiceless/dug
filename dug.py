@@ -17,10 +17,12 @@ ROOT_E = '192.203.230.10'
 # Map types to ints and ints to types
 TYPE = { 'A': 1,
          'NS': 2,
-         'CNAME': 5 }
+         'CNAME': 5,
+         'AAAA': 28 }
 TYPE_NAMES = { 1: 'A',
                2: 'NS',
-               5: 'CNAME' }
+               5: 'CNAME',
+               28: 'AAAA' }
 # Map classes to ints and ints to classes
 CLASS = { 'IN': 1 }
 CLASS_NAMES = { 1: 'IN' }
@@ -45,11 +47,11 @@ ADATA = 5
 
 
 def printQuestion(question):
-	print question[QNAME], CLASS_NAMES[question[QCLASS]], TYPE_NAMES[question[QTYPE]]
+	print "\t" + question[QNAME], CLASS_NAMES[question[QCLASS]], TYPE_NAMES[question[QTYPE]]
 
 
 def printAnswer(answer):
-	print answer[ANAME], answer[ATTL], CLASS_NAMES[answer[ACLASS]],
+	print "\t" + answer[ANAME], answer[ATTL], CLASS_NAMES[answer[ACLASS]],
 	try:
 		print TYPE_NAMES[answer[ATYPE]],
 	except KeyError:
@@ -240,9 +242,8 @@ def buildPacket(hostname, queryType):
 	qclass = CLASS['IN']
 	questionSegment += struct.pack("!H", qclass)
 
-	if DEBUG:
-		print "%-8s %s" % ("Bytes:", repr(header + questionSegment))
-		print "%-8s %s" % ("Hex:", ''.join(["%02x " % ord(x) for x in header + questionSegment]).strip())
+	# print "%-8s %s" % ("Bytes:", repr(header + questionSegment))
+	# print "%-8s %s" % ("Hex:", ''.join(["%02x " % ord(x) for x in header + questionSegment]).strip())
 
 	return header + questionSegment
 
@@ -250,9 +251,7 @@ def buildPacket(hostname, queryType):
 def sendPacket(nameserver, packet):
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	sock.sendto(packet, (nameserver, PORT))
-	print "Packet sent"
 	data, addr = sock.recvfrom(RECV_BUF)
-	print "Received:", repr(data)
 	return data
 
 
@@ -277,22 +276,21 @@ def parseResponse(response, hostname, nameserver):
 	# Number of additional records
 	arcount, response = struct.unpack("!H", response[:2])[0], response[2:]
 
-	if DEBUG:
-		print "ID:", identifier
-		print "Return code:", int(rc, 2), "(" + RCODE[int(rc, 2)] + ")"
-		print "Truncated:", 
-		if int(tc):
-			print 'Yes'
-		else:
-			print 'No'
-		print "Answer RRs:", ancount
-		print "Authoritative:",
-		if int(aa):
-			print 'Yes'
-		else:
-			print 'No'
-		print "Authority RRs:", nscount
-		print "Additional RRs:", arcount
+	# print "ID:", identifier
+	# print "Return code:", int(rc, 2), "(" + RCODE[int(rc, 2)] + ")"
+	# print "Truncated:", 
+	# if int(tc):
+	# 	print 'Yes'
+	# else:
+	# 	print 'No'
+	# print "Answer RRs:", ancount
+	# print "Authoritative:",
+	# if int(aa):
+	# 	print 'Yes'
+	# else:
+	# 	print 'No'
+	# print "Authority RRs:", nscount
+	# print "Additional RRs:", arcount
 
 	# Parse the questions, same as when building the packet
 	questions = []
@@ -313,10 +311,10 @@ def parseResponse(response, hostname, nameserver):
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		questions[q].append(qclass)
 	
-	if DEBUG:
-		print "Questions:"
-		for question in questions:
-			printQuestion(question)
+	# if DEBUG:
+	# 	print "Questions:"
+	# 	for question in questions:
+	# 		printQuestion(question)
 
 	# There normally won't be multiple questions, so this only inspects the first one
 	# TODO: for eachQuestion in questions...
@@ -335,25 +333,27 @@ def parseResponse(response, hostname, nameserver):
 
 	if DEBUG:
 		if ancount:
-			print "Answers:"
+			print "Answer RRs:"
 			for answer in answers:
 				printAnswer(answer)
 		else:
-			print "No answers"
+			print "No answer RRs"
 
 		if nscount:
-			print "Authority:"
+			print "Authority RRs:"
 			for auth in authorities:
 				printAnswer(auth)
 		else:
 			print "No authority RRs"
 
 		if arcount:
-			print "Additional:"
+			print "Additional RRs:"
 			for add in additionals:
 				printAnswer(add)
 		else:
 			print "No additional RRs"
+
+		print
 
 	# For A-type requests, check for answers
 	if qtype == TYPE['A']:
@@ -381,7 +381,7 @@ def parseResponse(response, hostname, nameserver):
 				print answer[ADATA]
 		# Otherwise, make an NS query to determine who we should be asking 
 		else:
-			print "Send NS request"
+			# print "Send NS request"
 			# Build the packet
 			packet = buildPacket(hostname, TYPE['NS'])
 			# Send the packet
@@ -399,7 +399,7 @@ def parseResponse(response, hostname, nameserver):
 			for a in additionals:
 				if a[ANAME] == pickNS and a[ATYPE] == TYPE['A']:
 					nsIP = a[ADATA]
-			print "Now query", pickNS, "=", nsIP
+			# print "Now query", pickNS, "=", nsIP
 			packet = buildPacket(hostname, TYPE['A'])
 			# Send the packet
 			response = sendPacket(nsIP, packet)
@@ -420,16 +420,21 @@ def parseResponse(response, hostname, nameserver):
 
 
 def main():
+	global DEBUG
+
 	# Parse command-line arguments
 	parser = optparse.OptionParser(description = 'Basic dig implementation using Python',
 		usage = "usage: %prog hostname nameserver")
+	parser.add_option("-d", action = "store_true", dest = "DEBUG", default = False,
+		help = "show debug output listing all answers")
 
 	(options, args) = parser.parse_args()
+	DEBUG = options.DEBUG
 	if len(args) != 2:
 		parser.error("Wrong number of arguments")
-	if DEBUG:
-		print "%-8s %s" % ("Options:", options)
-		print "%-8s %s" % ("Args:", args)
+
+	print "%-8s %s" % ("Options:", options)
+	print "%-8s %s" % ("Args:", args)
 
 	hostname = args[0]
 	nameserver = args[1]
