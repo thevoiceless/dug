@@ -342,18 +342,13 @@ def parseResponse(response, hostname, nameserver):
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
 
-	print "response after answers:", repr(response)
-
 	# Loop nscount times
 	for ns in range(nscount):
-		print "NS", ns + 1
-		print "response", repr(response)
 		# [name, rtype, rclass, ttl, rdlen, rdata]
 		authorities.append([])
 
 		# Name, variable length
 		name, response = parseLabel(response, origResponse)
-		print "name:", repr(name)
 		authorities[ns].append(name)
 
 		# Type of the RDATA field
@@ -382,13 +377,11 @@ def parseResponse(response, hostname, nameserver):
 				print "Error: Incorrect format for A-type RDATA"
 				sys.exit(1)
 		elif rtype == TYPE['NS']:
-			name, response = parseLabel(response, origResponse)
-			print "NS name:", name
+			# Important: DO NOT SET RESPONSE, the correct amount of data is consumed after this
+			name, _ = parseLabel(response, origResponse)
 			authorities[ns].append(name)
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
-		print "Response after NS", str(ns+1) + ":", repr(response)
-		print "NS records:", authorities
 
 	if qtype == TYPE['A']:
 		if ancount:
