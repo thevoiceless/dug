@@ -379,41 +379,46 @@ def parseResponse(response, hostname, nameserver):
 					else:
 						continue
 				print answer[ADATA]
-		# Otherwise, make an NS query to determine who we should be asking 
+		# Otherwise, determine who we should be asking 
 		else:
-			# print "Send NS request"
-			# Build the packet
-			packet = buildPacket(hostname, TYPE['NS'])
-			# Send the packet
-			response = sendPacket(nameserver, packet)
-			# Parse the response
-			parseResponse(response, hostname, nameserver)
+			# If the server knows who to ask, assume the relevant NS records are included
+			# Along with those NS records, assume the additional records include the IP address
+			# Setting the type to NS ensures that the next if-block is entered
+			if nscount:
+				qtype = TYPE['NS']
+			# Otherwise, we need to make an NS request to the root nameservers
+			else:
+				# Build the packet
+				packet = buildPacket(hostname, TYPE['NS'])
+				# Send the packet
+				response = sendPacket(ROOT_E, packet)
+				# Parse the response
+				parseResponse(response, hostname, ROOT_E)
 
 	# For NS-type requests, check the authority section
-	# If no NS records are returned, query the root E nameserver (after that, records should always be returned)
-	elif qtype == TYPE['NS']:
+	# Raise an exception if no NS records are returned
+	if qtype == TYPE['NS']:
 		if nscount:
 			# Assume that if a nameserver is known, so is its IP
-			pickNS = authorities[0][5]
 			nsIP = ''
-			for a in additionals:
-				if a[ANAME] == pickNS and a[ATYPE] == TYPE['A']:
-					nsIP = a[ADATA]
-			# print "Now query", pickNS, "=", nsIP
+			for ns in authorities:
+				for a in additionals:
+					if a[ATYPE] == TYPE['A'] and a[ANAME] == ns[ADATA]:
+						nsIP = a[ADATA]
+						break
+				if len(nsIP) > 0:
+					break
+			# Build the packet
 			packet = buildPacket(hostname, TYPE['A'])
 			# Send the packet
 			response = sendPacket(nsIP, packet)
 			# Parse the response
 			parseResponse(response, hostname, nsIP)
 		else:
-			print "Failure - No NS records"
-			print "Ask root nameserver"
-			# Build the packet
-			packet = buildPacket(hostname, TYPE['NS'])
-			# Send the packet
-			response = sendPacket(ROOT_E, packet)
-			# Parse the response
-			parseResponse(response, hostname, ROOT_E)
+			# We should never reach this point because the first query is an A request
+			# If that query returns no answers, we query the root nameserver
+			# All results after that should chain together correctly
+			raise RuntimeError("NS request did not return any records")
 
 	# TODO: Refactor repeated building/sending/parsing into single block right here?
 	# TODO: If so, would need to halt execution after printing answers above
