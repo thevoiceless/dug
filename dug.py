@@ -7,7 +7,7 @@
 #   No ternary statement
 #   Old string formatting
 
-import optparse, random, struct, socket, sys, signal
+import optparse, random, struct, socket, sys
 
 
 # Only used in a few places, made global instead of passing as arguments
