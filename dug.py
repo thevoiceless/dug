@@ -13,6 +13,7 @@ import optparse, random, struct, socket, sys
 debug = False
 daemon = False
 daemonSocket = None
+returnAddr = None
 
 DNS_PORT = 53
 MY_PORT = 7687
@@ -266,6 +267,7 @@ def sendPacket(nameserver, packet):
 def parseResponse(response, hostname, nameserver):
 	global daemon
 	global daemonSocket
+	global returnAddr
 
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
@@ -372,11 +374,7 @@ def parseResponse(response, hostname, nameserver):
 		if ancount:
 			if daemon:
 				print "daemon"
-				daemonSocket.close()
-				sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-				sock.bind(('', MY_PORT))
-				sock.sendto(origResponse, ('', MY_PORT))
-				sock.close()
+				daemonSocket.sendto(origResponse, returnAddr)
 				print "wrote back to dig"
 			else:
 				if int(aa):
@@ -448,6 +446,7 @@ def main():
 	global debug
 	global daemon
 	global daemonSocket
+	global returnAddr
 
 	# Parse command-line arguments
 	parser = optparse.OptionParser(description = 'Basic dig implementation using Python',
@@ -468,7 +467,6 @@ def main():
 
 	nameserver = ''
 	hostname = ''
-	inData = ''
 
 	if daemon:
 		nameserver = args[0]
@@ -477,14 +475,13 @@ def main():
 		print "Port", MY_PORT, "selected"
 		daemonSocket.bind(('', MY_PORT))
 		while True:
-			data, addr = daemonSocket.recvfrom(RECV_BUF)
+			data, returnAddr = daemonSocket.recvfrom(RECV_BUF)
 			print "received data:"
 			print repr(data)
 			response = sendPacket(nameserver, data)
 			print "sent"
 			parseResponse(response, hostname, nameserver)
-			print "wrote data, exiting"
-			sys.exit(0)
+			print "wrote data"
 	else:
 		hostname = args[0]
 		nameserver = args[1]
