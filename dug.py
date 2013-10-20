@@ -7,14 +7,16 @@
 #   No ternary statement
 #   Old string formatting
 
-import optparse, random, struct, socket, sys
+import optparse, random, struct, socket, sys, signal
 
 
+# Only used in a few places, made global instead of passing as arguments
 debug = False
 daemon = False
 daemonSocket = None
 returnAddr = None
 
+# Constants
 DNS_PORT = 53
 MY_PORT = 7687
 RECV_BUF = 1024
@@ -51,15 +53,18 @@ ATTL = 3
 ADATA = 5
 
 
+# Print the given question in a human-readable format
 def printQuestion(question):
 	print "\t" + question[QNAME], CLASS_NAMES[question[QCLASS]], TYPE_NAMES[question[QTYPE]]
 
 
+# Print the given answer in a human-readable format
 def printAnswer(answer):
 	print "\t" + answer[ANAME], answer[ATTL], CLASS_NAMES[answer[ACLASS]],
 	try:
 		print TYPE_NAMES[answer[ATYPE]],
 	except KeyError:
+		# This is for types that aren't handled yet
 		print "type", answer[ATYPE],
 	if len(answer) == 6:
 		print answer[ADATA]
@@ -67,7 +72,8 @@ def printAnswer(answer):
 		print
 
 
-# Convert unsigned int n to binary representation, optionally specify number of bits
+# Convert unsigned int n to binary string representation (big endian) and return it
+# Optionally specify number of total bits, will be padded to the left with zeros
 # Based on http://stackoverflow.com/a/1519418/1693087
 def d2b(n, numBits = 0):
 	bStr = ''
@@ -83,32 +89,34 @@ def d2b(n, numBits = 0):
 	while n > 0:
 		bStr = str(n % 2) + bStr
 		n = n >> 1
+
 	return bStr.zfill(numBits)
 
 
-# Parse the labels from byteString
-# The orig parameter is not needed when parsing labels in question sections, as those shouldn't have pointers
-def parseLabel(byteString, orig = None):
+# Parse label from byteString, then return both of them
+# The original response is only used for parsing pointers
+def parseLabel(byteString, origResponse = None):
 	label = ''
 	while True:
 		# If the binary representation of first two bytes starts with '11', name points to a label
 		checkPointer = d2b(struct.unpack("!H", byteString[:2])[0], 16)
 		if checkPointer[:2] == '11':
-			if not orig:
+			if not origResponse:
 				raise ValueError, "must pass the original response to parseLabel"
 			# Consume the two bytes and determine the offset of the name within the response
 			byteString = byteString[2:]
 			offset = int(checkPointer[2:], 2)
 			# The question section has been consumed, so refer to the original response string
-			plabel, _ = parseLabel(orig[offset:], orig)
+			plabel, _ = parseLabel(origResponse[offset:], origResponse)
 			if len(label) > 0:
 				label += '.' + plabel
 			else:
 				label += plabel
-			# Pointers terminate labels, so break and return
+			# Pointers terminate labels, so break and return after parsing the value
 			break
 		# Otherwise, name is a label, read it normally
 		else:
+			# Length byte followed by that number of bytes
 			qlen, byteString = struct.unpack("!B", byteString[:1])[0], byteString[1:]
 			if qlen == 0:
 				break
@@ -117,9 +125,12 @@ def parseLabel(byteString, orig = None):
 			else:
 				label += byteString[:qlen]
 			byteString = byteString[qlen:]
+
 	return label, byteString
 
 
+# Parse recordCount resource records from response and store them in outputList
+# The original response is only here to be passed along to parseLabel()
 def parseRRs(outputList, recordCount, response, origResponse):
 	# Loop recordCount times
 	# print "loop", recordCount, "times"
@@ -128,17 +139,17 @@ def parseRRs(outputList, recordCount, response, origResponse):
 		# [name, rtype, rclass, ttl, rdlen, rdata]
 		outputList.append([])
 
-		# Name, variable length
+		# Variable-length name
 		name, response = parseLabel(response, origResponse)
 		outputList[rec].append(name)
 		# print "name", name
 
-		# Type of the RDATA field
+		# 16-bit type of the RDATA field
 		rtype, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rtype)
 		# print "type", rtype
 
-		# Class of the RDATA field
+		# 16-bit class of the RDATA field
 		rclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		outputList[rec].append(rclass)
 		# print "class", rclass
@@ -153,9 +164,9 @@ def parseRRs(outputList, recordCount, response, origResponse):
 		outputList[rec].append(rdlen)
 		# print "len", rdlen
 
-		# Variable-length data (depending on type of record) for the resource
+		# Variable-length data (depending on type of record)
+		# A-type records return an IP address as a 32-bit unsigned value
 		if rtype == TYPE['A']:
-			# A-type records return an IP address as a 32-bit unsigned value
 			try:
 				ip = socket.inet_ntoa(response[:4])
 				# print "ip", ip
@@ -165,10 +176,13 @@ def parseRRs(outputList, recordCount, response, origResponse):
 				print outputList
 				print repr(response)
 				sys.exit(1)
+		# NS and CNAME records return labels
 		elif rtype == TYPE['NS'] or rtype == TYPE['CNAME']:
+			# The modified response is ignored here
 			name, _ = parseLabel(response, origResponse)
 			# print "name", name
 			outputList[rec].append(name)
+
 		# Consume rdlen bytes of data
 		response = response[rdlen:]
 
@@ -176,7 +190,6 @@ def parseRRs(outputList, recordCount, response, origResponse):
 
 
 # Build the DNS datagram
-# Uses the struct module to convert values to their byte representation
 def buildPacket(hostname, queryType):
 	# Build the header
 	header = ''
@@ -247,28 +260,19 @@ def buildPacket(hostname, queryType):
 	qclass = CLASS['IN']
 	questionSegment += struct.pack("!H", qclass)
 
-	# print "%-8s %s" % ("Bytes:", repr(header + questionSegment))
-	# print "%-8s %s" % ("Hex:", ''.join(["%02x " % ord(x) for x in header + questionSegment]).strip())
-
 	return header + questionSegment
 
 
+# Send the given packet to the given nameserver and return the response
 def sendPacket(nameserver, packet):
-	print "len", len(packet)
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	print "created socket"
 	sock.sendto(packet, (nameserver, DNS_PORT))
-	print "wrote to socket"
 	data, addr = sock.recvfrom(RECV_BUF)
-	print "read from socket"
 	return data
 
 
+# Parse the given response and act accordingly
 def parseResponse(response, hostname, nameserver):
-	global daemon
-	global daemonSocket
-	global returnAddr
-
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
 
@@ -372,10 +376,10 @@ def parseResponse(response, hostname, nameserver):
 	if qtype == TYPE['A']:
 		# Display any answers that are present
 		if ancount:
+			# If running as a daemon, return the record
 			if daemon:
-				print "daemon"
 				daemonSocket.sendto(origResponse, returnAddr)
-				print "wrote back to dig"
+			# Otherwise, print it like everything else
 			else:
 				if int(aa):
 					print "Authoritative answer:"
@@ -383,14 +387,11 @@ def parseResponse(response, hostname, nameserver):
 					print "Non-authoritative answer:"
 				for answer in answers:
 					if answer[ATYPE] == TYPE['CNAME']:
-						# If the only answer is a CNAME alias for another hostname, we need the A record for the alias
-						# There's a good chance this will mess up the output, but I haven't tested it
+						# If the only answer is a CNAME alias for another hostname, we need the A record for that alias
+						# Untested, and there's a good chance this will mess up the output
 						if ancount == 1:
-							# Build the packet
 							packet = buildPacket(answer[ADATA], TYPE['A'])
-							# Send the packet
 							response = sendPacket(nameserver, packet)
-							# Parse the response
 							parseResponse(response, answer[ADATA], nameserver)
 							break
 						# Otherwise, we'll just show the other answers
@@ -406,19 +407,17 @@ def parseResponse(response, hostname, nameserver):
 				qtype = TYPE['NS']
 			# Otherwise, we need to make an NS request to the root nameservers
 			else:
-				# Build the packet
 				packet = buildPacket(hostname, TYPE['NS'])
-				# Send the packet
 				response = sendPacket(ROOT_E, packet)
-				# Parse the response
 				parseResponse(response, hostname, ROOT_E)
 
 	# For NS-type requests, check the authority section
+	# Assume that if a nameserver is known, so is its IP
 	# Raise an exception if no NS records are returned
 	if qtype == TYPE['NS']:
 		if nscount:
-			# Assume that if a nameserver is known, so is its IP
 			nsIP = ''
+			# Loop over the NS records and find one with a corresponding A record
 			for ns in authorities:
 				for a in additionals:
 					if a[ATYPE] == TYPE['A'] and a[ANAME] == ns[ADATA]:
@@ -426,11 +425,9 @@ def parseResponse(response, hostname, nameserver):
 						break
 				if len(nsIP) > 0:
 					break
-			# Build the packet
+
 			packet = buildPacket(hostname, TYPE['A'])
-			# Send the packet
 			response = sendPacket(nsIP, packet)
-			# Parse the response
 			parseResponse(response, hostname, nsIP)
 		else:
 			# We should never reach this point because the first query is an A request
@@ -438,11 +435,12 @@ def parseResponse(response, hostname, nameserver):
 			# All results after that should chain together correctly
 			raise RuntimeError("NS request did not return any records")
 
-	# TODO: Refactor repeated building/sending/parsing into single block right here?
+	# TODO: Possibly refactor repeated building/sending/parsing into single block right here
 	# TODO: If so, would need to halt execution after printing answers above
 
 
 def main():
+	# Globals only need to be declared if they're modified
 	global debug
 	global daemon
 	global daemonSocket
@@ -457,32 +455,35 @@ def main():
 		help = "run as a daemon")
 
 	(options, args) = parser.parse_args()
+
+	# Check mode and number of arguments
 	debug = options.debug
 	daemon = options.daemon
 	if (daemon and len(args) != 1) or (not daemon and len(args) != 2):
 		parser.error("Wrong number of arguments")
 
-	print "%-8s %s" % ("Options:", options)
-	print "%-8s %s" % ("Args:", args)
-
-	nameserver = ''
-	hostname = ''
-
+	# Daemon mode is meant to run in the background and respond to requests passed to it
 	if daemon:
+		# The single command line arg is the nameserver to query
 		nameserver = args[0]
+		hostname = ''
 
+		# Bind to MY_PORT and listen over UDP
 		daemonSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		print "Port", MY_PORT, "selected"
 		daemonSocket.bind(('', MY_PORT))
+
 		while True:
+			# returnAddr is the address to send back to
 			data, returnAddr = daemonSocket.recvfrom(RECV_BUF)
-			print "received data:"
-			print repr(data)
+			# Assume we've been sent a DNS packet, pass it along to the given nameserver
 			response = sendPacket(nameserver, data)
-			print "sent"
+			# Parse the response
+			# Will either continue with the required queries or send the final response back to returnAddr
 			parseResponse(response, hostname, nameserver)
-			print "wrote data"
+	# Not daemon, display output directly
 	else:
+		# Given both the hostname to locate and the nameserver to query
 		hostname = args[0]
 		nameserver = args[1]
 
