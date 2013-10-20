@@ -10,8 +10,12 @@
 import optparse, random, struct, socket, sys
 
 
-DEBUG = True
-PORT = 53
+debug = False
+daemon = False
+daemonSocket = None
+
+DNS_PORT = 53
+MY_PORT = 7687
 RECV_BUF = 1024
 ROOT_E = '192.203.230.10'
 # Map types to ints and ints to types
@@ -249,13 +253,20 @@ def buildPacket(hostname, queryType):
 
 
 def sendPacket(nameserver, packet):
+	print "len", len(packet)
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	sock.sendto(packet, (nameserver, PORT))
+	print "created socket"
+	sock.sendto(packet, (nameserver, DNS_PORT))
+	print "wrote to socket"
 	data, addr = sock.recvfrom(RECV_BUF)
+	print "read from socket"
 	return data
 
 
 def parseResponse(response, hostname, nameserver):
+	global daemon
+	global daemonSocket
+
 	# Trim the response as it is parsed to make slicing nicer, but keep a copy of the original
 	origResponse = response
 
@@ -311,7 +322,7 @@ def parseResponse(response, hostname, nameserver):
 		qclass, response = struct.unpack("!H", response[:2])[0], response[2:]
 		questions[q].append(qclass)
 	
-	if DEBUG:
+	if debug:
 		print "Questions asked to " + nameserver + ":"
 		for question in questions:
 			printQuestion(question)
@@ -331,7 +342,7 @@ def parseResponse(response, hostname, nameserver):
 	# print "Parse", arcount, "additional RRs"
 	response = parseRRs(additionals, arcount, response, origResponse)
 
-	if DEBUG:
+	if debug:
 		if ancount:
 			print "Answer RRs:"
 			for answer in answers:
@@ -359,26 +370,35 @@ def parseResponse(response, hostname, nameserver):
 	if qtype == TYPE['A']:
 		# Display any answers that are present
 		if ancount:
-			if int(aa):
-				print "Authoritative answer:"
+			if daemon:
+				print "daemon"
+				daemonSocket.close()
+				sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				sock.bind(('', MY_PORT))
+				sock.sendto(origResponse, ('', MY_PORT))
+				sock.close()
+				print "wrote back to dig"
 			else:
-				print "Non-authoritative answer:"
-			for answer in answers:
-				if answer[ATYPE] == TYPE['CNAME']:
-					# If the only answer is a CNAME alias for another hostname, we need the A record for the alias
-					# There's a good chance this will mess up the output, but I haven't tested it
-					if ancount == 1:
-						# Build the packet
-						packet = buildPacket(answer[ADATA], TYPE['A'])
-						# Send the packet
-						response = sendPacket(nameserver, packet)
-						# Parse the response
-						parseResponse(response, answer[ADATA], nameserver)
-						break
-					# Otherwise, we'll just show the other answers
-					else:
-						continue
-				print answer[ADATA]
+				if int(aa):
+					print "Authoritative answer:"
+				else:
+					print "Non-authoritative answer:"
+				for answer in answers:
+					if answer[ATYPE] == TYPE['CNAME']:
+						# If the only answer is a CNAME alias for another hostname, we need the A record for the alias
+						# There's a good chance this will mess up the output, but I haven't tested it
+						if ancount == 1:
+							# Build the packet
+							packet = buildPacket(answer[ADATA], TYPE['A'])
+							# Send the packet
+							response = sendPacket(nameserver, packet)
+							# Parse the response
+							parseResponse(response, answer[ADATA], nameserver)
+							break
+						# Otherwise, we'll just show the other answers
+						else:
+							continue
+					print answer[ADATA]
 		# Otherwise, determine who we should be asking 
 		else:
 			# If the server knows who to ask, assume the relevant NS records are included
@@ -425,31 +445,56 @@ def parseResponse(response, hostname, nameserver):
 
 
 def main():
-	global DEBUG
+	global debug
+	global daemon
+	global daemonSocket
 
 	# Parse command-line arguments
 	parser = optparse.OptionParser(description = 'Basic dig implementation using Python',
 		usage = "usage: %prog hostname nameserver")
-	parser.add_option("-d", action = "store_true", dest = "DEBUG", default = False,
+	parser.add_option("-d", action = "store_true", dest = "debug", default = False,
 		help = "show debug output listing all answers")
+	parser.add_option("-f", action = "store_true", dest = "daemon", default = False,
+		help = "run as a daemon")
 
 	(options, args) = parser.parse_args()
-	DEBUG = options.DEBUG
-	if len(args) != 2:
+	debug = options.debug
+	daemon = options.daemon
+	if (daemon and len(args) != 1) or (not daemon and len(args) != 2):
 		parser.error("Wrong number of arguments")
 
 	print "%-8s %s" % ("Options:", options)
 	print "%-8s %s" % ("Args:", args)
 
-	hostname = args[0]
-	nameserver = args[1]
+	nameserver = ''
+	hostname = ''
+	inData = ''
 
-	# Build the packet
-	packet = buildPacket(hostname, TYPE['A'])
-	# Send the packet
-	response = sendPacket(nameserver, packet)
-	# Parse the response
-	parseResponse(response, hostname, nameserver)
+	if daemon:
+		nameserver = args[0]
+
+		daemonSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		print "Port", MY_PORT, "selected"
+		daemonSocket.bind(('', MY_PORT))
+		while True:
+			data, addr = daemonSocket.recvfrom(RECV_BUF)
+			print "received data:"
+			print repr(data)
+			response = sendPacket(nameserver, data)
+			print "sent"
+			parseResponse(response, hostname, nameserver)
+			print "wrote data, exiting"
+			sys.exit(0)
+	else:
+		hostname = args[0]
+		nameserver = args[1]
+
+		# Build the packet
+		packet = buildPacket(hostname, TYPE['A'])
+		# Send the packet
+		response = sendPacket(nameserver, packet)
+		# Parse the response
+		parseResponse(response, hostname, nameserver)
 
 
 # __name__ will be '__main__' if this code is being run directly (i.e. 'python dug.py')
