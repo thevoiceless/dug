@@ -13,6 +13,7 @@ Notes
 
 ### Running as a daemon
 * This mode was designed to receive DNS datagrams created by `dig`, send them, and then hand the response back to `dig`. It's not really good for anything else. The listening port is specified by the `MY_PORT` variable in `dug.py`
+* There is no threading or coordination of datagram IDs, so there will probably be issues if the program receives multiple packets at the same time when running as a daemon.
 
 
 Usage
